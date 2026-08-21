@@ -15,5 +15,6 @@
         <file>assets/icons/hard-drive.svg</file>
         <file>assets/icons/battery-wide-outline.svg</file>
         <file>assets/icons/zap-white.svg</file>
+        <file>assets/icons/sun.svg</file>
     </qresource>
 </RCC>

@@ -238,6 +238,28 @@ QVariantMap collectStatus()
     }
     result.insert(QStringLiteral("audioAvailable"), audioAvailable);
     result.insert(QStringLiteral("volumePercent"), volumePercent);
+
+    QString backlightPath;
+    int brightnessMax = 0;
+    int brightnessPercent = -1;
+    const QDir backlights(QStringLiteral("/sys/class/backlight"));
+    for (const QString &entry : backlights.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name)) {
+        const QString base = backlights.absoluteFilePath(entry);
+        qint64 current = 0;
+        qint64 maximum = 0;
+        if (readInteger(base + QStringLiteral("/actual_brightness"), &current)
+                && readInteger(base + QStringLiteral("/max_brightness"), &maximum)
+                && maximum > 0) {
+            backlightPath = base + QStringLiteral("/brightness");
+            brightnessMax = static_cast<int>(maximum);
+            brightnessPercent = qBound(0, qRound(100.0 * current / maximum), 100);
+            break;
+        }
+    }
+    result.insert(QStringLiteral("backlightPath"), backlightPath);
+    result.insert(QStringLiteral("brightnessMax"), brightnessMax);
+    result.insert(QStringLiteral("displayBrightnessPercent"), brightnessPercent);
+    result.insert(QStringLiteral("brightnessAvailable"), !backlightPath.isEmpty());
     return result;
 }
 
@@ -290,6 +312,8 @@ SystemBackend::SystemBackend(QObject *parent)
 {
     m_volumeSetTimer.setSingleShot(true);
     m_volumeSetTimer.setInterval(80);
+    m_brightnessSetTimer.setSingleShot(true);
+    m_brightnessSetTimer.setInterval(60);
     m_volumeSetProcess.setProcessChannelMode(QProcess::MergedChannels);
     m_feedbackProcess.setProcessChannelMode(QProcess::MergedChannels);
     connect(&m_volumeSetTimer, &QTimer::timeout, this, [this]() {
@@ -305,6 +329,16 @@ SystemBackend::SystemBackend(QObject *parent)
     connect(&m_volumeSetProcess,
             QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, [this](int, QProcess::ExitStatus) { refreshStatus(); });
+    connect(&m_brightnessSetTimer, &QTimer::timeout, this, [this]() {
+        if (m_backlightPath.isEmpty() || m_brightnessMax <= 0) return;
+        const int level = qBound(1, qRound(m_brightnessMax * m_pendingBrightnessPercent / 100.0),
+                                 m_brightnessMax);
+        QFile brightness(m_backlightPath);
+        if (!brightness.open(QIODevice::WriteOnly | QIODevice::Text)) return;
+        brightness.write(QByteArray::number(level));
+        brightness.close();
+        refreshStatus();
+    });
     connect(&m_statusWatcher, &QFutureWatcher<QVariantMap>::finished, this, [this]() {
         applyStatusSnapshot(m_statusWatcher.result());
         if (m_statusRefreshPending) {
@@ -355,6 +389,8 @@ double SystemBackend::batteryPowerW() const
 }
 int SystemBackend::volumePercent() const { return m_volumePercent; }
 bool SystemBackend::audioAvailable() const { return m_audioAvailable; }
+int SystemBackend::displayBrightnessPercent() const { return m_displayBrightnessPercent; }
+bool SystemBackend::brightnessAvailable() const { return m_brightnessAvailable; }
 
 int SystemBackend::displayRotation() const
 {
@@ -453,6 +489,20 @@ void SystemBackend::applyStatusSnapshot(const QVariantMap &snapshot)
         m_audioAvailable = audioAvailable;
         emit audioChanged();
     }
+
+    const QString backlightPath = snapshot.value(QStringLiteral("backlightPath")).toString();
+    const int brightnessMax = snapshot.value(QStringLiteral("brightnessMax")).toInt();
+    const int brightnessPercent = snapshot.value(QStringLiteral("displayBrightnessPercent"), -1).toInt();
+    const bool brightnessAvailable = snapshot.value(QStringLiteral("brightnessAvailable")).toBool();
+    if (backlightPath != m_backlightPath || brightnessMax != m_brightnessMax
+            || brightnessPercent != m_displayBrightnessPercent
+            || brightnessAvailable != m_brightnessAvailable) {
+        m_backlightPath = backlightPath;
+        m_brightnessMax = brightnessMax;
+        m_displayBrightnessPercent = brightnessPercent;
+        m_brightnessAvailable = brightnessAvailable;
+        emit displayChanged();
+    }
 }
 
 void SystemBackend::scanWifi()
@@ -496,4 +546,14 @@ void SystemBackend::playVolumeFeedback()
                                  QStringLiteral("-D"), QStringLiteral("meow_volume"),
                                  QStringLiteral("/opt/meow-os/assets/sounds/volume-meow.wav")});
     });
+}
+
+void SystemBackend::setDisplayBrightness(int percent)
+{
+    m_pendingBrightnessPercent = qBound(10, percent, 100);
+    if (m_displayBrightnessPercent != m_pendingBrightnessPercent) {
+        m_displayBrightnessPercent = m_pendingBrightnessPercent;
+        emit displayChanged();
+    }
+    m_brightnessSetTimer.start();
 }

@@ -12,6 +12,7 @@ install -d -m 0755 /opt/meow-os/bin /opt/meow-os/assets/sounds /etc/meow-os /etc
 install -m 0755 meow-os /opt/meow-os/meow-os
 install -m 0644 assets/sounds/volume-meow.wav /opt/meow-os/assets/sounds/volume-meow.wav
 install -m 0755 scripts/meow-display-launcher /opt/meow-os/bin/meow-display-launcher
+install -m 0755 scripts/meow-backlight-permissions /opt/meow-os/bin/meow-backlight-permissions
 install -m 0755 systemd/vt_mode.py /opt/meow-os/vt_mode.py
 install -m 0644 systemd/meow-os.service /etc/systemd/system/meow-os.service
 install -m 0644 systemd/meow-charge-enable.service /etc/systemd/system/meow-charge-enable.service

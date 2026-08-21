@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+
+for brightness in /sys/class/backlight/*/brightness; do
+    [ -e "$brightness" ] || continue
+    chgrp video "$brightness"
+    chmod g+w "$brightness"
+done

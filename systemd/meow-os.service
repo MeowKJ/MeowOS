@@ -12,6 +12,7 @@ SupplementaryGroups=input video render audio i2c
 RuntimeDirectory=meow-os
 Environment=XDG_RUNTIME_DIR=/run/meow-os
 EnvironmentFile=-/etc/meow-os/display.conf
+ExecStartPre=+/opt/meow-os/bin/meow-backlight-permissions
 ExecStartPre=+/usr/bin/python3 /opt/meow-os/vt_mode.py graphics
 ExecStart=/opt/meow-os/bin/meow-display-launcher
 ExecStopPost=+/usr/bin/python3 /opt/meow-os/vt_mode.py text

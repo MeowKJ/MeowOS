@@ -7,6 +7,7 @@
 - 1280×800 原生横屏 Qt Quick UI，逆时针 90° 映射到 800×1280 物理面板
 - A5E Mali-G57/Panfrost + EGLFS 硬件渲染，保留 Linux framebuffer 软件回退
 - JD9366T + Linux evdev/libinput 触摸输入
+- 读取并调节真实 PWM 背光亮度，设置页限制最低 10% 防止黑屏
 - 无动画的圆形 MeowKJ 头像启动画面与“关于本机”资料卡
 - 模型驱动的可扩展应用主页、点击测试、双栏系统设置
 - 不可触摸的系统状态栏与紧凑返回组件

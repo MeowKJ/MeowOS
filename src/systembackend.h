@@ -33,6 +33,8 @@ class SystemBackend final : public QObject
     Q_PROPERTY(double batteryPowerW READ batteryPowerW NOTIFY powerChanged)
     Q_PROPERTY(int volumePercent READ volumePercent NOTIFY audioChanged)
     Q_PROPERTY(bool audioAvailable READ audioAvailable NOTIFY audioChanged)
+    Q_PROPERTY(int displayBrightnessPercent READ displayBrightnessPercent NOTIFY displayChanged)
+    Q_PROPERTY(bool brightnessAvailable READ brightnessAvailable NOTIFY displayChanged)
     Q_PROPERTY(int displayRotation READ displayRotation CONSTANT)
 
 public:
@@ -61,6 +63,8 @@ public:
     double batteryPowerW() const;
     int volumePercent() const;
     bool audioAvailable() const;
+    int displayBrightnessPercent() const;
+    bool brightnessAvailable() const;
     int displayRotation() const;
 
     Q_INVOKABLE void refresh();
@@ -70,6 +74,7 @@ public:
     Q_INVOKABLE void forgetWifi(const QString &ssid);
     Q_INVOKABLE void setVolume(int percent);
     Q_INVOKABLE void playVolumeFeedback();
+    Q_INVOKABLE void setDisplayBrightness(int percent);
 
 signals:
     void systemInfoChanged();
@@ -77,6 +82,7 @@ signals:
     void wifiChanged();
     void powerChanged();
     void audioChanged();
+    void displayChanged();
     void operationMessage(const QString &message, bool success);
 
 private:
@@ -104,6 +110,10 @@ private:
     QString m_batteryHealth;
     int m_volumePercent = -1;
     bool m_audioAvailable = false;
+    int m_displayBrightnessPercent = -1;
+    bool m_brightnessAvailable = false;
+    QString m_backlightPath;
+    int m_brightnessMax = 0;
     bool m_statusRefreshPending = false;
     QFutureWatcher<QVariantMap> m_statusWatcher;
     QFutureWatcher<QVariantList> m_wifiScanWatcher;
@@ -112,4 +122,6 @@ private:
     QTimer m_volumeSetTimer;
     QProcess m_volumeSetProcess;
     QProcess m_feedbackProcess;
+    int m_pendingBrightnessPercent = 30;
+    QTimer m_brightnessSetTimer;
 };

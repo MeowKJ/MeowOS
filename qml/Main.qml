@@ -26,9 +26,12 @@ ApplicationWindow {
     property string clockTime: "--:--"
     property string clockDate: ""
     property int tapCount: 0
-    property string initialSettingsSection: Qt.application.arguments.indexOf("--sound") >= 0 ? "sound" : "battery"
+    property string initialSettingsSection: Qt.application.arguments.indexOf("--sound") >= 0
+                                            ? "sound"
+                                            : (Qt.application.arguments.indexOf("--display") >= 0 ? "display" : "battery")
     property bool startInSettings: Qt.application.arguments.indexOf("--settings") >= 0
                                    || Qt.application.arguments.indexOf("--sound") >= 0
+                                   || Qt.application.arguments.indexOf("--display") >= 0
 
     function updateClock() {
         var now = new Date()
@@ -505,9 +508,50 @@ ApplicationWindow {
             subtitle: "WX101 · JD9366TC"
             IosGroup {
                 width: parent.width
+                IosInfoRow { label: "屏幕亮度"; value: systemBackend.brightnessAvailable ? systemBackend.displayBrightnessPercent + "%" : "--" }
                 IosInfoRow { label: "逻辑分辨率"; value: "1280 × 800" }
                 IosInfoRow { label: "物理分辨率"; value: "800 × 1280" }
                 IosInfoRow { label: "输出方向"; value: "逆时针 90°"; last: true }
+            }
+            Rectangle {
+                width: parent.width; height: 132; radius: 18
+                color: "#F9F9FB"; border.color: window.separator; border.width: 1
+                Column {
+                    anchors.fill: parent; anchors.margins: 18; spacing: 14
+                    RowLayout {
+                        width: parent.width
+                        Text { text: "亮度"; color: window.ink; font.family: window.uiFont; font.pixelSize: 19; font.weight: Font.DemiBold; Layout.fillWidth: true }
+                        Text { text: systemBackend.brightnessAvailable ? systemBackend.displayBrightnessPercent + "%" : "--"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 18; font.weight: Font.DemiBold }
+                    }
+                    RowLayout {
+                        width: parent.width; spacing: 15
+                        Image { Layout.preferredWidth: 25; Layout.preferredHeight: 25; source: "qrc:/assets/icons/sun.svg"; sourceSize.width: 50; sourceSize.height: 50; opacity: brightnessSlider.enabled ? 1 : 0.3 }
+                        Slider {
+                            id: brightnessSlider
+                            Layout.fillWidth: true; Layout.preferredHeight: 34
+                            from: 10; to: 100; stepSize: 1; live: true
+                            enabled: systemBackend.brightnessAvailable
+                            value: systemBackend.displayBrightnessPercent >= 0 ? systemBackend.displayBrightnessPercent : 10
+                            onMoved: systemBackend.setDisplayBrightness(Math.round(value))
+                            background: Rectangle {
+                                x: brightnessSlider.leftPadding
+                                y: brightnessSlider.topPadding + brightnessSlider.availableHeight / 2 - height / 2
+                                width: brightnessSlider.availableWidth; height: 7; radius: 4
+                                color: "#DEDCE2"
+                                Rectangle {
+                                    width: brightnessSlider.visualPosition * parent.width; height: parent.height; radius: parent.radius
+                                    color: window.purple
+                                }
+                            }
+                            handle: Rectangle {
+                                x: brightnessSlider.leftPadding + brightnessSlider.visualPosition * (brightnessSlider.availableWidth - width)
+                                y: brightnessSlider.topPadding + brightnessSlider.availableHeight / 2 - height / 2
+                                width: 26; height: 26; radius: 13
+                                color: "white"; border.color: "#D2CFD7"; border.width: 1
+                            }
+                        }
+                    }
+                }
             }
         }
     }
