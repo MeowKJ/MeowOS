@@ -448,9 +448,26 @@ QVariantMap runWifiOperation(const QString &operation, const QString &ssid, cons
     QVariantMap result;
     ProcessResult processResult;
     if (operation == QStringLiteral("connect")) {
-        QStringList arguments{QStringLiteral("device"), QStringLiteral("wifi"), QStringLiteral("connect"), ssid};
-        if (!password.isEmpty()) arguments << QStringLiteral("password") << password;
-        processResult = runProcessDetailed(QStringLiteral("nmcli"), arguments, 30000);
+        const ProcessResult savedProfile = runProcessDetailed(QStringLiteral("nmcli"),
+                                                               {QStringLiteral("connection"), QStringLiteral("show"),
+                                                                QStringLiteral("id"), ssid}, 3000);
+        if (!password.isEmpty() && savedProfile.ok()) {
+            const ProcessResult updatePassword = runProcessDetailed(QStringLiteral("nmcli"),
+                                                                     {QStringLiteral("connection"), QStringLiteral("modify"),
+                                                                      QStringLiteral("id"), ssid,
+                                                                      QStringLiteral("802-11-wireless-security.psk"), password}, 5000);
+            processResult = updatePassword.ok()
+                    ? runProcessDetailed(QStringLiteral("nmcli"),
+                                         {QStringLiteral("connection"), QStringLiteral("up"),
+                                          QStringLiteral("id"), ssid, QStringLiteral("ifname"),
+                                          QStringLiteral("wlan0")}, 30000)
+                    : updatePassword;
+        } else {
+            QStringList arguments{QStringLiteral("device"), QStringLiteral("wifi"), QStringLiteral("connect"), ssid,
+                                  QStringLiteral("ifname"), QStringLiteral("wlan0")};
+            if (!password.isEmpty()) arguments << QStringLiteral("password") << password;
+            processResult = runProcessDetailed(QStringLiteral("nmcli"), arguments, 30000);
+        }
     } else {
         processResult = runProcessDetailed(QStringLiteral("nmcli"),
                                            {QStringLiteral("connection"), QStringLiteral("delete"),
@@ -517,6 +534,9 @@ SystemBackend::SystemBackend(QObject *parent)
     connect(&m_wifiOperationWatcher, &QFutureWatcher<QVariantMap>::finished, this, [this]() {
         const QVariantMap result = m_wifiOperationWatcher.result();
         const bool ok = result.value(QStringLiteral("ok")).toBool();
+        m_wifiOperation.clear();
+        m_wifiOperationSsid.clear();
+        emit wifiChanged();
         emit operationMessage(result.value(QStringLiteral("message")).toString(), ok);
         refreshStatus();
         scanWifi();
@@ -540,6 +560,9 @@ int SystemBackend::nvmePercent() const { return m_nvmePercent; }
 QString SystemBackend::wifiName() const { return m_wifiName; }
 bool SystemBackend::wifiConnected() const { return !m_wifiName.isEmpty(); }
 bool SystemBackend::wifiScanning() const { return m_wifiScanWatcher.isRunning(); }
+bool SystemBackend::wifiOperating() const { return m_wifiOperationWatcher.isRunning(); }
+QString SystemBackend::wifiOperation() const { return m_wifiOperation; }
+QString SystemBackend::wifiOperationSsid() const { return m_wifiOperationSsid; }
 QString SystemBackend::wifiScanError() const { return m_wifiScanError; }
 QVariantList SystemBackend::wifiNetworks() const { return m_wifiNetworks; }
 QVariantList SystemBackend::ethernetPorts() const { return m_ethernetPorts; }
@@ -744,14 +767,20 @@ void SystemBackend::scanWifi()
 void SystemBackend::connectWifi(const QString &ssid, const QString &password)
 {
     if (!m_wifiOperationWatcher.isRunning()) {
+        m_wifiOperation = QStringLiteral("connect");
+        m_wifiOperationSsid = ssid;
         m_wifiOperationWatcher.setFuture(QtConcurrent::run(runWifiOperation, QStringLiteral("connect"), ssid, password));
+        emit wifiChanged();
     }
 }
 
 void SystemBackend::forgetWifi(const QString &ssid)
 {
     if (!m_wifiOperationWatcher.isRunning()) {
+        m_wifiOperation = QStringLiteral("forget");
+        m_wifiOperationSsid = ssid;
         m_wifiOperationWatcher.setFuture(QtConcurrent::run(runWifiOperation, QStringLiteral("forget"), ssid, QString()));
+        emit wifiChanged();
     }
 }
 

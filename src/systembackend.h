@@ -26,6 +26,9 @@ class SystemBackend final : public QObject
     Q_PROPERTY(QString wifiName READ wifiName NOTIFY wifiChanged)
     Q_PROPERTY(bool wifiConnected READ wifiConnected NOTIFY wifiChanged)
     Q_PROPERTY(bool wifiScanning READ wifiScanning NOTIFY wifiChanged)
+    Q_PROPERTY(bool wifiOperating READ wifiOperating NOTIFY wifiChanged)
+    Q_PROPERTY(QString wifiOperation READ wifiOperation NOTIFY wifiChanged)
+    Q_PROPERTY(QString wifiOperationSsid READ wifiOperationSsid NOTIFY wifiChanged)
     Q_PROPERTY(QString wifiScanError READ wifiScanError NOTIFY wifiChanged)
     Q_PROPERTY(QVariantList wifiNetworks READ wifiNetworks NOTIFY wifiChanged)
     Q_PROPERTY(QVariantList ethernetPorts READ ethernetPorts NOTIFY ethernetChanged)
@@ -66,6 +69,9 @@ public:
     QString wifiName() const;
     bool wifiConnected() const;
     bool wifiScanning() const;
+    bool wifiOperating() const;
+    QString wifiOperation() const;
+    QString wifiOperationSsid() const;
     QString wifiScanError() const;
     QVariantList wifiNetworks() const;
     QVariantList ethernetPorts() const;
@@ -124,6 +130,8 @@ private:
     QString m_nvmeTotal;
     int m_nvmePercent = 0;
     QString m_wifiName;
+    QString m_wifiOperation;
+    QString m_wifiOperationSsid;
     QString m_wifiScanError;
     QVariantList m_wifiNetworks;
     QVariantList m_ethernetPorts;

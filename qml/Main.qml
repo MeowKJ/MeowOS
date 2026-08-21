@@ -371,9 +371,9 @@ ApplicationWindow {
                 return ({})
             }
             function selectNetwork(network) {
+                if (systemBackend.wifiOperating) return
                 if (network.active) {
-                    networkActionDialog.ssid = network.ssid
-                    networkActionDialog.open()
+                    networkActionDialog.openFor(network.ssid, true)
                 } else if (network.saved || network.security === "开放") {
                     systemBackend.connectWifi(network.ssid, "")
                 } else {
@@ -406,7 +406,7 @@ ApplicationWindow {
                         color: scanMouse.pressed ? "#6558D9" : window.purple
                         opacity: systemBackend.wifiScanning ? 0.62 : 1
                         Text { anchors.centerIn: parent; text: systemBackend.wifiScanning ? "正在扫描…" : "重新扫描"; color: "white"; font.family: window.uiFont; font.pixelSize: 16; font.weight: Font.DemiBold }
-                        MouseArea { id: scanMouse; anchors.fill: parent; enabled: !systemBackend.wifiScanning; onClicked: systemBackend.scanWifi() }
+                        MouseArea { id: scanMouse; anchors.fill: parent; enabled: !systemBackend.wifiScanning && !systemBackend.wifiOperating; onClicked: systemBackend.scanWifi() }
                     }
                 }
 
@@ -441,7 +441,7 @@ ApplicationWindow {
                     }
                     MouseArea {
                         anchors.fill: parent; enabled: systemBackend.wifiConnected
-                        onClicked: { networkActionDialog.ssid = systemBackend.wifiName; networkActionDialog.open() }
+                        onClicked: networkActionDialog.openFor(systemBackend.wifiName, true)
                     }
                 }
 
@@ -468,6 +468,8 @@ ApplicationWindow {
                         Repeater {
                             model: systemBackend.wifiNetworks
                             delegate: Rectangle {
+                                id: networkCard
+                                property bool longPressHandled: false
                                 visible: !modelData.active
                                 width: parent.width; height: visible ? 82 : 0; radius: 18
                                 color: networkMouse.pressed ? "#EEEAFE" : "#F9F9FB"
@@ -484,7 +486,7 @@ ApplicationWindow {
                                         RowLayout {
                                             Layout.fillWidth: true
                                             Text { text: modelData.ssid; color: window.ink; font.family: window.uiFont; font.pixelSize: 19; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.fillWidth: true }
-                                            Text { visible: modelData.saved; text: "已保存"; color: window.purple; font.family: window.uiFont; font.pixelSize: 13 }
+                                            Text { visible: modelData.saved; text: "已保存 · 长按管理"; color: window.purple; font.family: window.uiFont; font.pixelSize: 13 }
                                         }
                                         Text { text: modelData.band + " · 信道 " + modelData.channel + " · " + modelData.rate; color: window.secondary; font.family: window.uiFont; font.pixelSize: 14 }
                                     }
@@ -494,7 +496,17 @@ ApplicationWindow {
                                         Text { text: modelData.security; color: window.secondary; font.family: window.uiFont; font.pixelSize: 13; Layout.alignment: Qt.AlignRight }
                                     }
                                 }
-                                MouseArea { id: networkMouse; anchors.fill: parent; onClicked: wifiPage.selectNetwork(modelData) }
+                                MouseArea {
+                                    id: networkMouse; anchors.fill: parent; enabled: !systemBackend.wifiOperating
+                                    onPressed: networkCard.longPressHandled = false
+                                    onPressAndHold: {
+                                        if (modelData.saved) {
+                                            networkCard.longPressHandled = true
+                                            networkActionDialog.openFor(modelData.ssid, false)
+                                        }
+                                    }
+                                    onClicked: if (!networkCard.longPressHandled) wifiPage.selectNetwork(modelData)
+                                }
                             }
                         }
                         Text {
@@ -1050,23 +1062,104 @@ ApplicationWindow {
     Item {
         id: networkActionDialog
         property string ssid: ""
+        property bool activeNetwork: false
+        function openFor(networkName, active) {
+            ssid = networkName
+            activeNetwork = active
+            open()
+        }
         function open() { visible = true }
         function close() { visible = false }
         parent: scene; anchors.fill: parent; z: 2100; visible: false
         Rectangle { anchors.fill: parent; color: "#66000000"; MouseArea { anchors.fill: parent; onClicked: networkActionDialog.close() } }
         Rectangle {
-            width: 520; height: 250; anchors.centerIn: parent
+            width: networkActionDialog.activeNetwork ? 520 : 690
+            height: networkActionDialog.activeNetwork ? 250 : 270
+            anchors.centerIn: parent
             radius: 26; color: "white"; border.color: window.separator; border.width: 1
             Column {
                 anchors.fill: parent; anchors.margins: 26; spacing: 14
                 Text { text: networkActionDialog.ssid; color: window.ink; font.family: window.uiFont; font.pixelSize: 25; font.weight: Font.Bold; width: parent.width; elide: Text.ElideRight }
-                Text { text: "当前已连接网络"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 17 }
+                Text {
+                    text: networkActionDialog.activeNetwork ? "当前已连接网络" : "已保存此网络的连接信息"
+                    color: window.secondary; font.family: window.uiFont; font.pixelSize: 17
+                }
                 Row {
+                    visible: networkActionDialog.activeNetwork
                     anchors.horizontalCenter: parent.horizontalCenter; spacing: 14
                     KeyboardKey { label: "取消"; keyWidth: 150; onTapped: networkActionDialog.close() }
                     KeyboardKey {
                         label: "忘记此网络"; keyWidth: 190; destructive: true
                         onTapped: { systemBackend.forgetWifi(networkActionDialog.ssid); networkActionDialog.close() }
+                    }
+                }
+                Text {
+                    visible: !networkActionDialog.activeNetwork
+                    width: parent.width
+                    text: "密码发生变化时请选择“重新输入密码”"
+                    color: window.secondary; font.family: window.uiFont; font.pixelSize: 15
+                }
+                Row {
+                    visible: !networkActionDialog.activeNetwork
+                    anchors.horizontalCenter: parent.horizontalCenter; spacing: 12
+                    KeyboardKey {
+                        label: "忘记网络"; keyWidth: 170; destructive: true
+                        onTapped: { systemBackend.forgetWifi(networkActionDialog.ssid); networkActionDialog.close() }
+                    }
+                    KeyboardKey {
+                        label: "重新输入密码"; keyWidth: 190
+                        onTapped: {
+                            var targetSsid = networkActionDialog.ssid
+                            networkActionDialog.close()
+                            passwordDialog.openFor(targetSsid)
+                        }
+                    }
+                    KeyboardKey {
+                        label: "连接"; keyWidth: 150; accent: true
+                        onTapped: { systemBackend.connectWifi(networkActionDialog.ssid, ""); networkActionDialog.close() }
+                    }
+                }
+            }
+        }
+    }
+
+    Item {
+        id: wifiOperationOverlay
+        parent: scene; anchors.fill: parent; z: 2150
+        visible: systemBackend.wifiOperating
+        Rectangle { anchors.fill: parent; color: "#470B0A0D" }
+        MouseArea { anchors.fill: parent }
+        Rectangle {
+            width: 650; height: 176; anchors.centerIn: parent
+            radius: 28; color: "#FCFBFD"; border.color: "#DDD9E3"; border.width: 1
+            RowLayout {
+                anchors.fill: parent; anchors.margins: 26; spacing: 20
+                Rectangle {
+                    Layout.preferredWidth: 70; Layout.preferredHeight: 70; radius: 21
+                    color: systemBackend.wifiOperation === "connect" ? "#7B6DF0" : "#A09AA5"
+                    Image {
+                        anchors.centerIn: parent; width: 38; height: 38
+                        source: "qrc:/assets/icons/wifi.svg"; sourceSize.width: 76; sourceSize.height: 76
+                    }
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true; spacing: 7
+                    Text {
+                        text: systemBackend.wifiOperation === "connect"
+                              ? "正在连接到 “" + systemBackend.wifiOperationSsid + "”"
+                              : "正在忘记 “" + systemBackend.wifiOperationSsid + "”"
+                        color: window.ink; font.family: window.uiFont; font.pixelSize: 23; font.weight: Font.Bold
+                        Layout.fillWidth: true; elide: Text.ElideRight
+                    }
+                    Text {
+                        text: systemBackend.wifiOperation === "connect"
+                              ? "正在验证密码并获取网络地址，请稍候"
+                              : "正在删除保存的密码和连接配置"
+                        color: window.secondary; font.family: window.uiFont; font.pixelSize: 17
+                    }
+                    Text {
+                        text: "完成后会自动显示结果"
+                        color: "#8C8491"; font.family: window.uiFont; font.pixelSize: 14
                     }
                 }
             }
