@@ -378,38 +378,49 @@ ApplicationWindow {
                                       : (systemBackend.batteryPercent >= 0 && systemBackend.batteryPercent <= 40
                                          ? "#FFCC00" : "#4B4650"))
                         }
-                        Image {
-                            visible: systemBackend.batteryCharging
-                            x: 44; anchors.verticalCenter: parent.verticalCenter
-                            width: 26; height: 26
-                            source: "qrc:/assets/icons/zap-white.svg"
-                            sourceSize.width: 52; sourceSize.height: 52
-                        }
-                        Text {
-                            x: systemBackend.batteryCharging ? 20 : 0
-                            width: parent.width - x; height: parent.height
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                            text: systemBackend.batteryPercent >= 0 ? systemBackend.batteryPercent + "%" : "--"
-                            color: "#3A3540"
-                            font.family: window.uiFont; font.pixelSize: 36; font.weight: Font.Bold
+                        Row {
+                            id: detailBatteryLabelBase
+                            anchors.centerIn: parent
+                            spacing: systemBackend.batteryCharging ? 9 : 0
+                            Image {
+                                visible: systemBackend.batteryCharging
+                                width: 26; height: 26
+                                anchors.verticalCenter: parent.verticalCenter
+                                source: "qrc:/assets/icons/zap-dark.svg"
+                                sourceSize.width: 52; sourceSize.height: 52
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: systemBackend.batteryPercent >= 0 ? systemBackend.batteryPercent + "%" : "--"
+                                color: "#3A3540"
+                                font.family: window.uiFont; font.pixelSize: 36; font.weight: Font.Bold
+                            }
                         }
                         Item {
                             x: 0; y: 0
                             width: detailBatteryFill.x + detailBatteryFill.width
                             height: detailBatteryBody.height
                             clip: true
-                            Text {
-                                x: systemBackend.batteryCharging ? 20 : 0
-                                width: detailBatteryBody.width - x; height: detailBatteryBody.height
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                                text: systemBackend.batteryPercent >= 0 ? systemBackend.batteryPercent + "%" : "--"
-                                color: !systemBackend.batteryCharging
-                                       && systemBackend.batteryPercent > 20
-                                       && systemBackend.batteryPercent <= 40
-                                       ? "#3A3540" : "white"
-                                font.family: window.uiFont; font.pixelSize: 36; font.weight: Font.Bold
+                            Row {
+                                x: detailBatteryLabelBase.x
+                                y: detailBatteryLabelBase.y
+                                spacing: detailBatteryLabelBase.spacing
+                                Image {
+                                    visible: systemBackend.batteryCharging
+                                    width: 26; height: 26
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    source: "qrc:/assets/icons/zap-white.svg"
+                                    sourceSize.width: 52; sourceSize.height: 52
+                                }
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: systemBackend.batteryPercent >= 0 ? systemBackend.batteryPercent + "%" : "--"
+                                    color: !systemBackend.batteryCharging
+                                           && systemBackend.batteryPercent > 20
+                                           && systemBackend.batteryPercent <= 40
+                                           ? "#3A3540" : "white"
+                                    font.family: window.uiFont; font.pixelSize: 36; font.weight: Font.Bold
+                                }
                             }
                         }
                     }
@@ -698,25 +709,25 @@ ApplicationWindow {
                         color: statusBattery.fillColor
                     }
 
-                    Image {
-                        visible: systemBackend.batteryCharging
-                        x: 12
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 11; height: 14
-                        source: "qrc:/assets/icons/zap-white.svg"
-                        sourceSize.width: 22; sourceSize.height: 28
-                    }
-
-                    Text {
-                        x: systemBackend.batteryCharging ? 7 : 0
-                        width: parent.width - x; height: parent.height
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                        text: systemBackend.batteryPercent >= 0 ? systemBackend.batteryPercent : "--"
-                        color: "#3A3540"
-                        font.family: window.uiFont
-                        font.pixelSize: 14
-                        font.weight: Font.Bold
+                    Row {
+                        id: statusBatteryLabelBase
+                        anchors.centerIn: parent
+                        spacing: systemBackend.batteryCharging ? 2 : 0
+                        Image {
+                            visible: systemBackend.batteryCharging
+                            width: 11; height: 14
+                            anchors.verticalCenter: parent.verticalCenter
+                            source: "qrc:/assets/icons/zap-dark.svg"
+                            sourceSize.width: 22; sourceSize.height: 28
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: systemBackend.batteryPercent >= 0 ? systemBackend.batteryPercent : "--"
+                            color: "#3A3540"
+                            font.family: window.uiFont
+                            font.pixelSize: 14
+                            font.weight: Font.Bold
+                        }
                     }
 
                     Item {
@@ -724,16 +735,25 @@ ApplicationWindow {
                         width: batteryFill.x + batteryFill.width
                         height: batteryBody.height
                         clip: true
-                        Text {
-                            x: systemBackend.batteryCharging ? 7 : 0
-                            width: batteryBody.width - x; height: batteryBody.height
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                            text: systemBackend.batteryPercent >= 0 ? systemBackend.batteryPercent : "--"
-                            color: statusBattery.fillTextColor
-                            font.family: window.uiFont
-                            font.pixelSize: 14
-                            font.weight: Font.Bold
+                        Row {
+                            x: statusBatteryLabelBase.x
+                            y: statusBatteryLabelBase.y
+                            spacing: statusBatteryLabelBase.spacing
+                            Image {
+                                visible: systemBackend.batteryCharging
+                                width: 11; height: 14
+                                anchors.verticalCenter: parent.verticalCenter
+                                source: "qrc:/assets/icons/zap-white.svg"
+                                sourceSize.width: 22; sourceSize.height: 28
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: systemBackend.batteryPercent >= 0 ? systemBackend.batteryPercent : "--"
+                                color: statusBattery.fillTextColor
+                                font.family: window.uiFont
+                                font.pixelSize: 14
+                                font.weight: Font.Bold
+                            }
                         }
                     }
                 }
