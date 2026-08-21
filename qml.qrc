@@ -1,0 +1,19 @@
+<RCC>
+    <qresource prefix="/">
+        <file>qml/Main.qml</file>
+        <file>assets/meowkj-avatar.png</file>
+        <file>assets/meowkj-avatar-circle.png</file>
+        <file>assets/icons/wifi.svg</file>
+        <file>assets/icons/volume-2.svg</file>
+        <file>assets/icons/settings.svg</file>
+        <file>assets/icons/mouse-pointer-click.svg</file>
+        <file>assets/icons/chevron-left.svg</file>
+        <file>assets/icons/battery-charging.svg</file>
+        <file>assets/icons/cpu.svg</file>
+        <file>assets/icons/monitor.svg</file>
+        <file>assets/icons/info.svg</file>
+        <file>assets/icons/hard-drive.svg</file>
+        <file>assets/icons/battery-wide-outline.svg</file>
+        <file>assets/icons/zap-white.svg</file>
+    </qresource>
+</RCC>

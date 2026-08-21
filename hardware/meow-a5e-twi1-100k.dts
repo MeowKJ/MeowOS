@@ -1,0 +1,16 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+    metadata {
+        title = "Meow OS TWI1 100 kHz diagnostic";
+        compatible = "radxa,cubie-a5e";
+        category = "diagnostic";
+        description = "Temporarily reduce the shared battery I2C bus to 100 kHz.";
+    };
+};
+
+&twi1 {
+    clock-frequency = <100000>;
+    status = "okay";
+};

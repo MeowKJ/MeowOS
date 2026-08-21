@@ -1,0 +1,1 @@
+SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="jadard-touchscreen", SYMLINK+="input/meow-touch", GROUP="input", MODE="0660"

@@ -1,0 +1,19 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+    metadata {
+        title = "Meow OS battery I2C";
+        compatible = "radxa,cubie-a5e";
+        category = "power";
+        description = "Configure the shared charger and fuel-gauge bus for clock stretching.";
+    };
+};
+
+&twi1 {
+    /* The fuel gauge stretches SCL. The Allwinner drv-mode mishandles the
+     * completed data-byte state (0x28), while engine mode is stable. */
+    clock-frequency = <100000>;
+    twi_drv_used = <0>;
+    status = "okay";
+};

@@ -1,0 +1,17 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+    metadata {
+        title = "Meow OS TWI1 engine-mode diagnostic";
+        compatible = "radxa,cubie-a5e";
+        category = "diagnostic";
+        description = "Use the alternate Allwinner TWI transfer engine for clock-stretching devices.";
+    };
+};
+
+&twi1 {
+    clock-frequency = <100000>;
+    twi_drv_used = <0>;
+    status = "okay";
+};

@@ -1,0 +1,73 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+    metadata {
+        title = "Meow OS I2S speaker";
+        compatible = "radxa,cubie-a5e";
+        category = "audio";
+        exclusive = "PI2", "PI3", "PI4", "i2s2";
+        description = "Route I2S2 BCLK, LRCK and DOUT0 to header pins 12, 36 and 40.";
+    };
+};
+
+&pio {
+    meow_i2s2_clock_pins: meow-i2s2-clock-default {
+        pins = "PI2", "PI3";
+        function = "i2s2";
+        drive-strength = <20>;
+        bias-disable;
+    };
+
+    meow_i2s2_data_pin: meow-i2s2-data-default {
+        pins = "PI4";
+        function = "i2s2_dout";
+        drive-strength = <20>;
+        bias-disable;
+    };
+
+    meow_i2s2_clock_sleep: meow-i2s2-clock-sleep {
+        pins = "PI2", "PI3";
+        function = "gpio_in";
+    };
+
+    meow_i2s2_data_sleep: meow-i2s2-data-sleep {
+        pins = "PI4";
+        function = "gpio_in";
+    };
+};
+
+&i2s2_plat {
+    pinctrl-names = "default", "sleep";
+    pinctrl-0 = <&meow_i2s2_clock_pins &meow_i2s2_data_pin>;
+    pinctrl-1 = <&meow_i2s2_clock_sleep &meow_i2s2_data_sleep>;
+    status = "okay";
+};
+
+/* Replace the HDMI-only machine link with a header I2S dummy-codec link. */
+&i2s2_mach {
+    status = "disabled";
+};
+
+&{/soc@3000000} {
+    meow_speaker: meow-speaker {
+        compatible = "allwinner,sunxi-snd-mach";
+        status = "okay";
+        soundcard-mach,name = "Meow Speaker";
+        soundcard-mach,format = "i2s";
+        soundcard-mach,slot-num = <2>;
+        soundcard-mach,slot-width = <32>;
+        soundcard-mach,playback-only;
+        soundcard-mach,bitclock-master = <&meow_speaker_cpu>;
+        soundcard-mach,frame-master = <&meow_speaker_cpu>;
+
+        soundcard-mach,codec {
+        };
+
+        meow_speaker_cpu: soundcard-mach,cpu {
+            sound-dai = <&i2s2_plat>;
+            soundcard-mach,mclk-fs = <0>;
+            soundcard-mach,pll-fs = <1>;
+        };
+    };
+};

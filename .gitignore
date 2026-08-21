@@ -1,0 +1,15 @@
+build/
+Makefile
+.qmake.stash
+*.o
+moc_*.cpp
+qrc_*.cpp
+/meow-os
+*.user
+*.raw
+*.img
+*.img.xz
+out/
+.DS_Store
+/meow-*.png
+/running-a5e.dts

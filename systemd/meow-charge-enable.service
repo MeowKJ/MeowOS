@@ -1,0 +1,12 @@
+[Unit]
+Description=Meow OS charger enable GPIO
+Before=meow-os.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/gpioset --drive=push-pull --mode=signal gpiochip1 41=0
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

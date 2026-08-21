@@ -1,0 +1,23 @@
+[Unit]
+Description=Meow OS Qt Quick shell
+After=systemd-modules-load.service systemd-udev-settle.service NetworkManager.service
+Wants=systemd-udev-settle.service meow-charge-enable.service
+Conflicts=getty@tty1.service
+
+[Service]
+Type=simple
+User=radxa
+Group=radxa
+SupplementaryGroups=input video render audio i2c
+RuntimeDirectory=meow-os
+Environment=XDG_RUNTIME_DIR=/run/meow-os
+EnvironmentFile=-/etc/meow-os/display.conf
+ExecStartPre=+/usr/bin/python3 /opt/meow-os/vt_mode.py graphics
+ExecStart=/opt/meow-os/bin/meow-display-launcher
+ExecStopPost=+/usr/bin/python3 /opt/meow-os/vt_mode.py text
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
