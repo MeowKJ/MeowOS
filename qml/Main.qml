@@ -32,6 +32,7 @@ ApplicationWindow {
                                             ? "ethernet"
                                             : (Qt.application.arguments.indexOf("--wifi") >= 0
                                             || Qt.application.arguments.indexOf("--wifi-keyboard") >= 0
+                                            || Qt.application.arguments.indexOf("--wifi-keyboard-symbols") >= 0
                                             ? "wifi"
                                             : (Qt.application.arguments.indexOf("--sound") >= 0
                                                ? "sound"
@@ -44,6 +45,7 @@ ApplicationWindow {
                                    || Qt.application.arguments.indexOf("--storage") >= 0
                                    || Qt.application.arguments.indexOf("--wifi") >= 0
                                    || Qt.application.arguments.indexOf("--wifi-keyboard") >= 0
+                                   || Qt.application.arguments.indexOf("--wifi-keyboard-symbols") >= 0
                                    || Qt.application.arguments.indexOf("--ethernet") >= 0
 
     function updateClock() {
@@ -382,6 +384,11 @@ ApplicationWindow {
                 systemBackend.scanWifi()
                 if (Qt.application.arguments.indexOf("--wifi-keyboard") >= 0)
                     Qt.callLater(function() { passwordDialog.openFor("English Keyboard") })
+                else if (Qt.application.arguments.indexOf("--wifi-keyboard-symbols") >= 0)
+                    Qt.callLater(function() {
+                        passwordDialog.openFor("Special Symbols")
+                        passwordDialog.keyboardPage = 2
+                    })
             }
 
             Column {
@@ -849,19 +856,19 @@ ApplicationWindow {
         id: passwordDialog
         property string ssid: ""
         property bool shift: false
-        property bool symbols: false
+        property int keyboardPage: 0 // 0 letters, 1 numbers, 2 extended symbols
         property bool showPassword: false
         function openFor(networkName) {
             ssid = networkName
             shift = false
-            symbols = false
+            keyboardPage = 0
             showPassword = false
             wifiPassword.text = ""
             open()
         }
         function typeKey(key) {
             wifiPassword.text += key
-            if (shift && !symbols) shift = false
+            if (shift && keyboardPage === 0) shift = false
         }
         function backspace() {
             if (wifiPassword.text.length > 0) wifiPassword.text = wifiPassword.text.slice(0, -1)
@@ -945,13 +952,15 @@ ApplicationWindow {
                 Row {
                     anchors.horizontalCenter: parent.horizontalCenter; spacing: 9
                     Repeater {
-                        model: passwordDialog.symbols
-                               ? ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
-                               : ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"]
+                        model: passwordDialog.keyboardPage === 0
+                               ? ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"]
+                               : (passwordDialog.keyboardPage === 1
+                                  ? ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
+                                  : ["[", "]", "{", "}", "#", "%", "^", "*", "+", "="])
                         delegate: IpadKey {
-                            label: passwordDialog.symbols
-                                   ? modelData
-                                   : (passwordDialog.shift ? modelData : modelData.toLowerCase())
+                            label: passwordDialog.keyboardPage === 0
+                                   ? (passwordDialog.shift ? modelData : modelData.toLowerCase())
+                                   : modelData
                             keyWidth: 108
                             onTapped: passwordDialog.typeKey(label)
                         }
@@ -960,13 +969,15 @@ ApplicationWindow {
                 Row {
                     anchors.horizontalCenter: parent.horizontalCenter; spacing: 9
                     Repeater {
-                        model: passwordDialog.symbols
-                               ? ["@", "#", "$", "%", "&", "*", "(", ")", "\""]
-                               : ["A", "S", "D", "F", "G", "H", "J", "K", "L"]
+                        model: passwordDialog.keyboardPage === 0
+                               ? ["A", "S", "D", "F", "G", "H", "J", "K", "L"]
+                               : (passwordDialog.keyboardPage === 1
+                                  ? ["@", "#", "$", "%", "&", "*", "(", ")", "\""]
+                                  : ["_", "\\", "|", "~", "<", ">", "€", "£", "¥"])
                         delegate: IpadKey {
-                            label: passwordDialog.symbols
-                                   ? modelData
-                                   : (passwordDialog.shift ? modelData : modelData.toLowerCase())
+                            label: passwordDialog.keyboardPage === 0
+                                   ? (passwordDialog.shift ? modelData : modelData.toLowerCase())
+                                   : modelData
                             keyWidth: 108
                             onTapped: passwordDialog.typeKey(label)
                         }
@@ -975,20 +986,26 @@ ApplicationWindow {
                 Row {
                     anchors.horizontalCenter: parent.horizontalCenter; spacing: 9
                     IpadKey {
-                        label: passwordDialog.symbols ? "#+=" : "⇧"
+                        label: passwordDialog.keyboardPage === 0 ? "⇧"
+                                                                  : (passwordDialog.keyboardPage === 1 ? "#+=" : "123")
                         keyWidth: 142; functionKey: true; active: passwordDialog.shift
-                        onTapped: if (!passwordDialog.symbols) passwordDialog.shift = !passwordDialog.shift
+                        onTapped: {
+                            if (passwordDialog.keyboardPage === 0) passwordDialog.shift = !passwordDialog.shift
+                            else passwordDialog.keyboardPage = passwordDialog.keyboardPage === 1 ? 2 : 1
+                        }
                     }
                     Repeater {
-                        model: passwordDialog.symbols
-                               ? ["-", "_", "=", "+", "/", "\\", "?"]
-                               : ["Z", "X", "C", "V", "B", "N", "M"]
+                        model: passwordDialog.keyboardPage === 0
+                               ? ["Z", "X", "C", "V", "B", "N", "M"]
+                               : (passwordDialog.keyboardPage === 1
+                                  ? ["-", "_", "=", "+", "/", "\\", "?"]
+                                  : [".", ",", ":", ";", "!", "?", "'"])
                         delegate: IpadKey {
-                            label: passwordDialog.symbols
-                                   ? modelData
-                                   : (passwordDialog.shift ? modelData : modelData.toLowerCase())
+                            label: passwordDialog.keyboardPage === 0
+                                   ? (passwordDialog.shift ? modelData : modelData.toLowerCase())
+                                   : (modelData === "'" ? "’" : modelData)
                             keyWidth: 108
-                            onTapped: passwordDialog.typeKey(label)
+                            onTapped: passwordDialog.typeKey(passwordDialog.keyboardPage === 2 && modelData === "'" ? "'" : label)
                         }
                     }
                     IpadKey { label: "⌫"; keyWidth: 142; functionKey: true; onTapped: passwordDialog.backspace() }
@@ -996,9 +1013,12 @@ ApplicationWindow {
                 Row {
                     anchors.horizontalCenter: parent.horizontalCenter; spacing: 9
                     IpadKey {
-                        label: passwordDialog.symbols ? "ABC" : "123"
+                        label: passwordDialog.keyboardPage === 0 ? "123" : "ABC"
                         keyWidth: 142; functionKey: true
-                        onTapped: { passwordDialog.symbols = !passwordDialog.symbols; passwordDialog.shift = false }
+                        onTapped: {
+                            passwordDialog.keyboardPage = passwordDialog.keyboardPage === 0 ? 1 : 0
+                            passwordDialog.shift = false
+                        }
                     }
                     IpadKey { label: ","; keyWidth: 90; onTapped: passwordDialog.typeKey(",") }
                     IpadKey { label: "English (US)"; keyWidth: 502; onTapped: passwordDialog.typeKey(" ") }
