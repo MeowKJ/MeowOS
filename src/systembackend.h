@@ -25,6 +25,7 @@ class SystemBackend final : public QObject
     Q_PROPERTY(int nvmePercent READ nvmePercent NOTIFY storageChanged)
     Q_PROPERTY(QString wifiName READ wifiName NOTIFY wifiChanged)
     Q_PROPERTY(bool wifiConnected READ wifiConnected NOTIFY wifiChanged)
+    Q_PROPERTY(bool wifiScanning READ wifiScanning NOTIFY wifiChanged)
     Q_PROPERTY(QVariantList wifiNetworks READ wifiNetworks NOTIFY wifiChanged)
     Q_PROPERTY(bool batteryAvailable READ batteryAvailable NOTIFY powerChanged)
     Q_PROPERTY(int batteryPercent READ batteryPercent NOTIFY powerChanged)
@@ -62,6 +63,7 @@ public:
     int nvmePercent() const;
     QString wifiName() const;
     bool wifiConnected() const;
+    bool wifiScanning() const;
     QVariantList wifiNetworks() const;
     bool batteryAvailable() const;
     int batteryPercent() const;

@@ -26,15 +26,22 @@ ApplicationWindow {
     property string clockTime: "--:--"
     property string clockDate: ""
     property int tapCount: 0
-    property string initialSettingsSection: Qt.application.arguments.indexOf("--sound") >= 0
-                                            ? "sound"
+    property string operationText: ""
+    property bool operationSuccess: true
+    property string initialSettingsSection: Qt.application.arguments.indexOf("--wifi") >= 0
+                                            || Qt.application.arguments.indexOf("--wifi-keyboard") >= 0
+                                            ? "wifi"
+                                            : (Qt.application.arguments.indexOf("--sound") >= 0
+                                               ? "sound"
                                             : (Qt.application.arguments.indexOf("--display") >= 0
                                                ? "display"
-                                               : (Qt.application.arguments.indexOf("--storage") >= 0 ? "storage" : "battery"))
+                                               : (Qt.application.arguments.indexOf("--storage") >= 0 ? "storage" : "battery")))
     property bool startInSettings: Qt.application.arguments.indexOf("--settings") >= 0
                                    || Qt.application.arguments.indexOf("--sound") >= 0
                                    || Qt.application.arguments.indexOf("--display") >= 0
                                    || Qt.application.arguments.indexOf("--storage") >= 0
+                                   || Qt.application.arguments.indexOf("--wifi") >= 0
+                                   || Qt.application.arguments.indexOf("--wifi-keyboard") >= 0
 
     function updateClock() {
         var now = new Date()
@@ -65,6 +72,12 @@ ApplicationWindow {
         return "等待驱动"
     }
 
+    function wifiSignalColor(signal) {
+        if (signal >= 75) return "#34C759"
+        if (signal >= 45) return "#FF9F0A"
+        return "#FF3B30"
+    }
+
     ListModel {
         id: appRegistry
         ListElement { appId: "touch-test"; appTitle: "点击测试"; iconSource: "qrc:/assets/icons/mouse-pointer-click.svg"; accent: "#FF7FA7" }
@@ -84,6 +97,22 @@ ApplicationWindow {
         running: true
         repeat: true
         onTriggered: systemBackend.refreshStatus()
+    }
+
+    Timer {
+        id: operationToastTimer
+        interval: 2600
+        onTriggered: operationToast.visible = false
+    }
+
+    Connections {
+        target: systemBackend
+        function onOperationMessage(message, success) {
+            window.operationText = message
+            window.operationSuccess = success
+            operationToast.visible = true
+            operationToastTimer.restart()
+        }
     }
 
     Item {
@@ -149,6 +178,22 @@ ApplicationWindow {
                 font.family: window.uiFont; font.pixelSize: 32; font.weight: Font.DemiBold
             }
             Timer { interval: 900; running: true; onTriggered: splash.visible = false }
+        }
+
+        Rectangle {
+            id: operationToast
+            z: 2200
+            visible: false
+            anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 34 }
+            width: toastText.implicitWidth + 56; height: 54; radius: 27
+            color: window.operationSuccess ? "#2FAD72" : "#E64B55"
+            Text {
+                id: toastText
+                anchors.centerIn: parent
+                text: window.operationText
+                color: "white"
+                font.family: window.uiFont; font.pixelSize: 17; font.weight: Font.DemiBold
+            }
         }
     }
 
@@ -304,9 +349,32 @@ ApplicationWindow {
     Component {
         id: wifiSettings
         Item {
+            id: wifiPage
+            property var currentNetwork: {
+                for (var i = 0; i < systemBackend.wifiNetworks.length; ++i) {
+                    if (systemBackend.wifiNetworks[i].active) return systemBackend.wifiNetworks[i]
+                }
+                return ({})
+            }
+            function selectNetwork(network) {
+                if (network.active) {
+                    networkActionDialog.ssid = network.ssid
+                    networkActionDialog.open()
+                } else if (network.saved || network.security === "开放") {
+                    systemBackend.connectWifi(network.ssid, "")
+                } else {
+                    passwordDialog.openFor(network.ssid)
+                }
+            }
+            Component.onCompleted: {
+                systemBackend.scanWifi()
+                if (Qt.application.arguments.indexOf("--wifi-keyboard") >= 0)
+                    Qt.callLater(function() { passwordDialog.openFor("English Keyboard") })
+            }
+
             Column {
                 anchors { left: parent.left; right: parent.right; top: parent.top; margins: 30 }
-                spacing: 14
+                spacing: 16
                 RowLayout {
                     width: parent.width
                     ColumnLayout {
@@ -314,27 +382,93 @@ ApplicationWindow {
                         Text { text: "Wi-Fi"; color: window.ink; font.family: window.uiFont; font.pixelSize: 34; font.weight: Font.Bold }
                         Text { text: systemBackend.wifiConnected ? "已连接到 " + systemBackend.wifiName : "未连接"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 18 }
                     }
-                    Button { text: "重新扫描"; onClicked: systemBackend.scanWifi() }
+                    Rectangle {
+                        Layout.preferredWidth: 128; Layout.preferredHeight: 46; radius: 15
+                        color: scanMouse.pressed ? "#6558D9" : window.purple
+                        opacity: systemBackend.wifiScanning ? 0.62 : 1
+                        Text { anchors.centerIn: parent; text: systemBackend.wifiScanning ? "正在扫描…" : "重新扫描"; color: "white"; font.family: window.uiFont; font.pixelSize: 16; font.weight: Font.DemiBold }
+                        MouseArea { id: scanMouse; anchors.fill: parent; enabled: !systemBackend.wifiScanning; onClicked: systemBackend.scanWifi() }
+                    }
                 }
-                Rectangle { width: parent.width; height: 1; color: window.separator }
+
+                Rectangle {
+                    width: parent.width; height: 112; radius: 20
+                    color: systemBackend.wifiConnected ? "#EAF8F1" : "#F4F2F6"
+                    border.color: systemBackend.wifiConnected ? "#BCE8D1" : window.separator
+                    RowLayout {
+                        anchors.fill: parent; anchors.margins: 18; spacing: 16
+                        Rectangle {
+                            Layout.preferredWidth: 60; Layout.preferredHeight: 60; radius: 18
+                            color: systemBackend.wifiConnected ? window.wifiSignalColor(wifiPage.currentNetwork.signal || 0) : "#B8B4BC"
+                            Image { anchors.centerIn: parent; width: 34; height: 34; source: "qrc:/assets/icons/wifi.svg"; sourceSize.width: 68; sourceSize.height: 68 }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true; spacing: 3
+                            Text { text: systemBackend.wifiConnected ? systemBackend.wifiName : "Wi-Fi 未连接"; color: window.ink; font.family: window.uiFont; font.pixelSize: 22; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.fillWidth: true }
+                            Text {
+                                text: systemBackend.wifiConnected
+                                      ? ((wifiPage.currentNetwork.band || "")
+                                         + " · 信道 " + (wifiPage.currentNetwork.channel || "--")
+                                         + " · " + (wifiPage.currentNetwork.security || "--"))
+                                      : "选择下方网络进行连接"
+                                color: window.secondary; font.family: window.uiFont; font.pixelSize: 15
+                            }
+                        }
+                        ColumnLayout {
+                            visible: systemBackend.wifiConnected; spacing: 2
+                            Text { text: (wifiPage.currentNetwork.signal || 0) + "%"; color: window.wifiSignalColor(wifiPage.currentNetwork.signal || 0); font.family: window.uiFont; font.pixelSize: 24; font.weight: Font.Bold; Layout.alignment: Qt.AlignRight }
+                            Text { text: wifiPage.currentNetwork.rate || ""; color: window.secondary; font.family: window.uiFont; font.pixelSize: 14; Layout.alignment: Qt.AlignRight }
+                        }
+                    }
+                    MouseArea {
+                        anchors.fill: parent; enabled: systemBackend.wifiConnected
+                        onClicked: { networkActionDialog.ssid = systemBackend.wifiName; networkActionDialog.open() }
+                    }
+                }
+
+                Text { text: "附近网络"; color: window.ink; font.family: window.uiFont; font.pixelSize: 19; font.weight: Font.DemiBold }
                 Flickable {
-                    width: parent.width; height: 500; contentHeight: wifiList.height; clip: true
+                    width: parent.width; height: 360; contentHeight: wifiList.height; clip: true
                     Column {
-                        id: wifiList; width: parent.width
+                        id: wifiList; width: parent.width; spacing: 8
                         Repeater {
                             model: systemBackend.wifiNetworks
                             delegate: Rectangle {
-                                width: parent.width; height: 64; color: "transparent"
+                                visible: !modelData.active
+                                width: parent.width; height: visible ? 82 : 0; radius: 18
+                                color: networkMouse.pressed ? "#EEEAFE" : "#F9F9FB"
+                                border.color: window.separator; border.width: 1
                                 RowLayout {
-                                    anchors.fill: parent; spacing: 12
-                                    Text { text: modelData.active ? "✓" : ""; color: window.mint; font.pixelSize: 22; Layout.preferredWidth: 24 }
-                                    Text { text: modelData.ssid; color: window.ink; font.family: window.uiFont; font.pixelSize: 20; elide: Text.ElideRight; Layout.fillWidth: true }
-                                    Text { text: modelData.security; color: window.secondary; font.family: window.uiFont; font.pixelSize: 14 }
-                                    Text { text: modelData.signal + "%"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 15; Layout.preferredWidth: 48 }
+                                    anchors.fill: parent; anchors.margins: 13; spacing: 13
+                                    Rectangle {
+                                        Layout.preferredWidth: 48; Layout.preferredHeight: 48; radius: 14
+                                        color: window.wifiSignalColor(modelData.signal)
+                                        Image { anchors.centerIn: parent; width: 27; height: 27; source: "qrc:/assets/icons/wifi.svg"; sourceSize.width: 54; sourceSize.height: 54 }
+                                    }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true; spacing: 2
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            Text { text: modelData.ssid; color: window.ink; font.family: window.uiFont; font.pixelSize: 19; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.fillWidth: true }
+                                            Text { visible: modelData.saved; text: "已保存"; color: window.purple; font.family: window.uiFont; font.pixelSize: 13 }
+                                        }
+                                        Text { text: modelData.band + " · 信道 " + modelData.channel + " · " + modelData.rate; color: window.secondary; font.family: window.uiFont; font.pixelSize: 14 }
+                                    }
+                                    ColumnLayout {
+                                        spacing: 2
+                                        Text { text: modelData.signal + "%"; color: window.wifiSignalColor(modelData.signal); font.family: window.uiFont; font.pixelSize: 18; font.weight: Font.Bold; Layout.alignment: Qt.AlignRight }
+                                        Text { text: modelData.security; color: window.secondary; font.family: window.uiFont; font.pixelSize: 13; Layout.alignment: Qt.AlignRight }
+                                    }
                                 }
-                                Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 36 } height: 1; color: window.separator }
-                                MouseArea { anchors.fill: parent; enabled: !modelData.active; onClicked: { passwordDialog.ssid = modelData.ssid; passwordDialog.open() } }
+                                MouseArea { id: networkMouse; anchors.fill: parent; onClicked: wifiPage.selectNetwork(modelData) }
                             }
+                        }
+                        Text {
+                            visible: !systemBackend.wifiScanning && systemBackend.wifiNetworks.length <= (systemBackend.wifiConnected ? 1 : 0)
+                            width: parent.width; horizontalAlignment: Text.AlignHCenter
+                            text: "没有发现其他网络"
+                            color: window.secondary; font.family: window.uiFont; font.pixelSize: 16
+                            topPadding: 24
                         }
                     }
                 }
@@ -624,14 +758,119 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    Item {
         id: passwordDialog
         property string ssid: ""
-        parent: scene; anchors.centerIn: parent; width: 500; modal: true
-        title: "连接到 “" + ssid + "”"
-        standardButtons: Dialog.Ok | Dialog.Cancel
-        contentItem: TextField { id: wifiPassword; placeholderText: "Wi-Fi 密码"; echoMode: TextInput.Password; font.family: window.uiFont; font.pixelSize: 20 }
-        onAccepted: { systemBackend.connectWifi(ssid, wifiPassword.text); wifiPassword.text = "" }
+        property bool shift: false
+        property bool showPassword: false
+        function openFor(networkName) {
+            ssid = networkName
+            shift = false
+            showPassword = false
+            wifiPassword.text = ""
+            open()
+        }
+        function typeKey(key) {
+            wifiPassword.text += key
+            if (shift) shift = false
+        }
+        function backspace() {
+            if (wifiPassword.text.length > 0) wifiPassword.text = wifiPassword.text.slice(0, -1)
+        }
+        function open() { visible = true }
+        function close() { visible = false }
+        function submit() {
+            if (wifiPassword.text.length === 0) return
+            systemBackend.connectWifi(ssid, wifiPassword.text)
+            close()
+            wifiPassword.text = ""
+        }
+        parent: scene; anchors.fill: parent; z: 2100; visible: false
+        Rectangle { anchors.fill: parent; color: "#66000000"; MouseArea { anchors.fill: parent } }
+        Rectangle {
+            width: 940; height: 470; anchors.centerIn: parent
+            radius: 28; color: "white"; border.color: window.separator; border.width: 1
+            Column {
+                anchors.fill: parent; anchors.margins: 24; spacing: 11
+                RowLayout {
+                    width: parent.width; height: 38
+                    Text { text: "连接到 “" + passwordDialog.ssid + "”"; color: window.ink; font.family: window.uiFont; font.pixelSize: 25; font.weight: Font.Bold; Layout.fillWidth: true }
+                    KeyboardKey { label: passwordDialog.showPassword ? "隐藏" : "显示"; keyWidth: 82; onTapped: passwordDialog.showPassword = !passwordDialog.showPassword }
+                }
+                TextField {
+                    id: wifiPassword
+                    width: parent.width; height: 54
+                    placeholderText: "输入 Wi-Fi 密码"
+                    echoMode: passwordDialog.showPassword ? TextInput.Normal : TextInput.Password
+                    font.family: window.uiFont; font.pixelSize: 20
+                    leftPadding: 16; rightPadding: 16
+                    background: Rectangle { radius: 14; color: "#F5F3F7"; border.color: wifiPassword.activeFocus ? window.purple : window.separator; border.width: 2 }
+                    Keys.onReturnPressed: passwordDialog.submit()
+                }
+                Row {
+                    anchors.horizontalCenter: parent.horizontalCenter; spacing: 8
+                    Repeater { model: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]; delegate: KeyboardKey { label: modelData; onTapped: passwordDialog.typeKey(modelData) } }
+                }
+                Row {
+                    anchors.horizontalCenter: parent.horizontalCenter; spacing: 8
+                    Repeater {
+                        model: ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"]
+                        delegate: KeyboardKey { label: passwordDialog.shift ? modelData : modelData.toLowerCase(); onTapped: passwordDialog.typeKey(label) }
+                    }
+                }
+                Row {
+                    anchors.horizontalCenter: parent.horizontalCenter; spacing: 8
+                    Repeater {
+                        model: ["A", "S", "D", "F", "G", "H", "J", "K", "L"]
+                        delegate: KeyboardKey { label: passwordDialog.shift ? modelData : modelData.toLowerCase(); onTapped: passwordDialog.typeKey(label) }
+                    }
+                }
+                Row {
+                    anchors.horizontalCenter: parent.horizontalCenter; spacing: 8
+                    KeyboardKey { label: "Shift"; keyWidth: 84; active: passwordDialog.shift; onTapped: passwordDialog.shift = !passwordDialog.shift }
+                    Repeater {
+                        model: ["Z", "X", "C", "V", "B", "N", "M"]
+                        delegate: KeyboardKey { label: passwordDialog.shift ? modelData : modelData.toLowerCase(); onTapped: passwordDialog.typeKey(label) }
+                    }
+                    KeyboardKey { label: "⌫"; keyWidth: 84; onTapped: passwordDialog.backspace() }
+                }
+                Row {
+                    anchors.horizontalCenter: parent.horizontalCenter; spacing: 10
+                    KeyboardKey { label: "."; keyWidth: 60; onTapped: passwordDialog.typeKey(".") }
+                    KeyboardKey { label: "-"; keyWidth: 60; onTapped: passwordDialog.typeKey("-") }
+                    KeyboardKey { label: "空格"; keyWidth: 250; onTapped: passwordDialog.typeKey(" ") }
+                    KeyboardKey { label: "_"; keyWidth: 60; onTapped: passwordDialog.typeKey("_") }
+                    KeyboardKey { label: "取消"; keyWidth: 100; onTapped: passwordDialog.close() }
+                    KeyboardKey { label: "连接"; keyWidth: 120; accent: true; onTapped: passwordDialog.submit() }
+                }
+            }
+        }
+    }
+
+    Item {
+        id: networkActionDialog
+        property string ssid: ""
+        function open() { visible = true }
+        function close() { visible = false }
+        parent: scene; anchors.fill: parent; z: 2100; visible: false
+        Rectangle { anchors.fill: parent; color: "#66000000"; MouseArea { anchors.fill: parent; onClicked: networkActionDialog.close() } }
+        Rectangle {
+            width: 520; height: 250; anchors.centerIn: parent
+            radius: 26; color: "white"; border.color: window.separator; border.width: 1
+            Column {
+                anchors.fill: parent; anchors.margins: 26; spacing: 14
+                Text { text: networkActionDialog.ssid; color: window.ink; font.family: window.uiFont; font.pixelSize: 25; font.weight: Font.Bold; width: parent.width; elide: Text.ElideRight }
+                Text { text: "当前已连接网络"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 17 }
+                Row {
+                    anchors.horizontalCenter: parent.horizontalCenter; spacing: 14
+                    KeyboardKey { label: "取消"; keyWidth: 150; onTapped: networkActionDialog.close() }
+                    KeyboardKey {
+                        label: "忘记此网络"; keyWidth: 190; destructive: true
+                        onTapped: { systemBackend.forgetWifi(networkActionDialog.ssid); networkActionDialog.close() }
+                    }
+                }
+            }
+        }
     }
 
     component StatusBar: Rectangle {
@@ -849,6 +1088,28 @@ ApplicationWindow {
             Text { text: value; color: window.secondary; font.family: window.uiFont; font.pixelSize: 17 }
         }
         Rectangle { visible: !last; anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 18 } height: 1; color: window.separator }
+    }
+
+    component KeyboardKey: Rectangle {
+        property string label: ""
+        property real keyWidth: 65
+        property bool active: false
+        property bool accent: false
+        property bool destructive: false
+        signal tapped()
+        width: keyWidth; height: 48; radius: 12
+        color: keyMouse.pressed
+               ? (accent ? "#6558D9" : (destructive ? "#D93645" : "#DED9E3"))
+               : (accent ? window.purple : (destructive ? "#EB4D5C" : (active ? "#DED8FF" : "#F0EDF3")))
+        border.color: active ? window.purple : "transparent"
+        border.width: active ? 2 : 0
+        Text {
+            anchors.centerIn: parent
+            text: label
+            color: accent || destructive ? "white" : window.ink
+            font.family: window.uiFont; font.pixelSize: 17; font.weight: Font.Medium
+        }
+        MouseArea { id: keyMouse; anchors.fill: parent; onClicked: parent.tapped() }
     }
 
     component StorageDiskCard: Rectangle {

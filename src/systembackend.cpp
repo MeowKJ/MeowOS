@@ -110,17 +110,42 @@ QString formatBytes(qint64 bytes)
             .arg(QString::fromLatin1(units[unit]));
 }
 
+QStringList splitNmcliTerseLine(const QString &line)
+{
+    QStringList fields;
+    QString current;
+    bool escaped = false;
+    for (const QChar ch : line) {
+        if (escaped) {
+            current.append(ch);
+            escaped = false;
+        } else if (ch == QLatin1Char('\\')) {
+            escaped = true;
+        } else if (ch == QLatin1Char(':')) {
+            fields.append(current);
+            current.clear();
+        } else {
+            current.append(ch);
+        }
+    }
+    if (escaped) current.append(QLatin1Char('\\'));
+    fields.append(current);
+    return fields;
+}
+
 QVariantMap collectStatus()
 {
     QVariantMap result;
     const QString wifi = runProcess(QStringLiteral("nmcli"),
-                                    {QStringLiteral("-t"), QStringLiteral("-f"),
+                                    {QStringLiteral("-t"), QStringLiteral("-e"), QStringLiteral("yes"),
+                                     QStringLiteral("-f"),
                                      QStringLiteral("ACTIVE,SSID"), QStringLiteral("device"),
                                      QStringLiteral("wifi")}, 2500);
     QString currentWifi;
     for (const QString &line : wifi.split(QRegularExpression(QStringLiteral("\\r?\\n")), Qt::SkipEmptyParts)) {
-        if (line.startsWith(QStringLiteral("yes:"))) {
-            currentWifi = line.mid(4);
+        const QStringList fields = splitNmcliTerseLine(line);
+        if (fields.size() >= 2 && fields.at(0) == QStringLiteral("yes")) {
+            currentWifi = fields.at(1);
             break;
         }
     }
@@ -265,22 +290,48 @@ QVariantMap collectStatus()
 
 QVariantList collectWifiNetworks()
 {
+    QSet<QString> savedNetworks;
+    const QString savedOutput = runProcess(QStringLiteral("nmcli"),
+                                           {QStringLiteral("-t"), QStringLiteral("-e"), QStringLiteral("yes"),
+                                            QStringLiteral("-f"), QStringLiteral("NAME,TYPE"),
+                                            QStringLiteral("connection"), QStringLiteral("show")}, 2500);
+    for (const QString &line : savedOutput.split(QRegularExpression(QStringLiteral("\\r?\\n")), Qt::SkipEmptyParts)) {
+        const QStringList fields = splitNmcliTerseLine(line);
+        if (fields.size() >= 2 && fields.at(1) == QStringLiteral("802-11-wireless")) {
+            savedNetworks.insert(fields.at(0));
+        }
+    }
+
     const QString output = runProcess(QStringLiteral("nmcli"),
-                                      {QStringLiteral("-t"), QStringLiteral("--separator"), QStringLiteral("\t"),
-                                       QStringLiteral("-f"), QStringLiteral("IN-USE,SSID,SIGNAL,SECURITY"),
+                                      {QStringLiteral("-t"), QStringLiteral("-e"), QStringLiteral("yes"),
+                                       QStringLiteral("-f"),
+                                       QStringLiteral("IN-USE,SSID,SIGNAL,CHAN,FREQ,RATE,SECURITY,BARS"),
                                        QStringLiteral("device"), QStringLiteral("wifi"), QStringLiteral("list"),
                                        QStringLiteral("--rescan"), QStringLiteral("yes")}, 12000);
     QVariantList networks;
     QSet<QString> seen;
     for (const QString &line : output.split(QRegularExpression(QStringLiteral("\\r?\\n")), Qt::SkipEmptyParts)) {
-        const QStringList fields = line.split('\t');
-        if (fields.size() < 4 || fields.at(1).isEmpty() || seen.contains(fields.at(1))) continue;
+        const QStringList fields = splitNmcliTerseLine(line);
+        if (fields.size() < 8 || fields.at(1).isEmpty() || seen.contains(fields.at(1))) continue;
         seen.insert(fields.at(1));
+        bool frequencyOk = false;
+        const int frequency = fields.at(4).section(QLatin1Char(' '), 0, 0).toInt(&frequencyOk);
+        QString band;
+        if (frequencyOk && frequency >= 5925) band = QStringLiteral("6 GHz");
+        else if (frequencyOk && frequency >= 4900) band = QStringLiteral("5 GHz");
+        else if (frequencyOk && frequency > 0) band = QStringLiteral("2.4 GHz");
         QVariantMap item;
         item.insert(QStringLiteral("active"), fields.at(0) == QStringLiteral("*") || fields.at(0) == QStringLiteral("yes"));
         item.insert(QStringLiteral("ssid"), fields.at(1));
         item.insert(QStringLiteral("signal"), fields.at(2).toInt());
-        item.insert(QStringLiteral("security"), fields.at(3).isEmpty() ? QStringLiteral("开放") : fields.at(3));
+        item.insert(QStringLiteral("channel"), fields.at(3).toInt());
+        item.insert(QStringLiteral("frequency"), frequencyOk ? frequency : 0);
+        item.insert(QStringLiteral("band"), band);
+        item.insert(QStringLiteral("rate"), fields.at(5));
+        item.insert(QStringLiteral("security"), fields.at(6).isEmpty() || fields.at(6) == QStringLiteral("--")
+                    ? QStringLiteral("开放") : QString(fields.at(6)).replace(QLatin1Char(' '), QLatin1Char('/')));
+        item.insert(QStringLiteral("bars"), fields.at(7));
+        item.insert(QStringLiteral("saved"), savedNetworks.contains(fields.at(1)));
         networks.append(item);
     }
     return networks;
@@ -358,6 +409,7 @@ SystemBackend::SystemBackend(QObject *parent)
         emit operationMessage(connecting ? (ok ? QStringLiteral("Wi-Fi 已连接") : QStringLiteral("Wi-Fi 连接失败"))
                                          : (ok ? QStringLiteral("已忘记网络") : QStringLiteral("删除网络失败")), ok);
         refreshStatus();
+        scanWifi();
     });
     refresh();
 }
@@ -377,6 +429,7 @@ QString SystemBackend::nvmeTotal() const { return m_nvmeTotal; }
 int SystemBackend::nvmePercent() const { return m_nvmePercent; }
 QString SystemBackend::wifiName() const { return m_wifiName; }
 bool SystemBackend::wifiConnected() const { return !m_wifiName.isEmpty(); }
+bool SystemBackend::wifiScanning() const { return m_wifiScanWatcher.isRunning(); }
 QVariantList SystemBackend::wifiNetworks() const { return m_wifiNetworks; }
 bool SystemBackend::batteryAvailable() const { return m_batteryAvailable; }
 int SystemBackend::batteryPercent() const { return m_batteryPercent; }
@@ -561,7 +614,9 @@ void SystemBackend::applyStatusSnapshot(const QVariantMap &snapshot)
 
 void SystemBackend::scanWifi()
 {
-    if (!m_wifiScanWatcher.isRunning()) m_wifiScanWatcher.setFuture(QtConcurrent::run(collectWifiNetworks));
+    if (m_wifiScanWatcher.isRunning()) return;
+    m_wifiScanWatcher.setFuture(QtConcurrent::run(collectWifiNetworks));
+    emit wifiChanged();
 }
 
 void SystemBackend::connectWifi(const QString &ssid, const QString &password)
