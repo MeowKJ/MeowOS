@@ -27,6 +27,7 @@ class SystemBackend final : public QObject
     Q_PROPERTY(bool wifiConnected READ wifiConnected NOTIFY wifiChanged)
     Q_PROPERTY(bool wifiScanning READ wifiScanning NOTIFY wifiChanged)
     Q_PROPERTY(QVariantList wifiNetworks READ wifiNetworks NOTIFY wifiChanged)
+    Q_PROPERTY(QVariantList ethernetPorts READ ethernetPorts NOTIFY ethernetChanged)
     Q_PROPERTY(bool batteryAvailable READ batteryAvailable NOTIFY powerChanged)
     Q_PROPERTY(int batteryPercent READ batteryPercent NOTIFY powerChanged)
     Q_PROPERTY(QString batteryStatus READ batteryStatus NOTIFY powerChanged)
@@ -65,6 +66,7 @@ public:
     bool wifiConnected() const;
     bool wifiScanning() const;
     QVariantList wifiNetworks() const;
+    QVariantList ethernetPorts() const;
     bool batteryAvailable() const;
     int batteryPercent() const;
     QString batteryStatus() const;
@@ -96,6 +98,7 @@ signals:
     void systemInfoChanged();
     void storageChanged();
     void wifiChanged();
+    void ethernetChanged();
     void powerChanged();
     void audioChanged();
     void displayChanged();
@@ -120,6 +123,7 @@ private:
     int m_nvmePercent = 0;
     QString m_wifiName;
     QVariantList m_wifiNetworks;
+    QVariantList m_ethernetPorts;
     bool m_batteryAvailable = false;
     int m_batteryPercent = -1;
     QString m_batteryStatus;

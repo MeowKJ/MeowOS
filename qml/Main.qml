@@ -28,20 +28,23 @@ ApplicationWindow {
     property int tapCount: 0
     property string operationText: ""
     property bool operationSuccess: true
-    property string initialSettingsSection: Qt.application.arguments.indexOf("--wifi") >= 0
+    property string initialSettingsSection: Qt.application.arguments.indexOf("--ethernet") >= 0
+                                            ? "ethernet"
+                                            : (Qt.application.arguments.indexOf("--wifi") >= 0
                                             || Qt.application.arguments.indexOf("--wifi-keyboard") >= 0
                                             ? "wifi"
                                             : (Qt.application.arguments.indexOf("--sound") >= 0
                                                ? "sound"
                                             : (Qt.application.arguments.indexOf("--display") >= 0
                                                ? "display"
-                                               : (Qt.application.arguments.indexOf("--storage") >= 0 ? "storage" : "battery")))
+                                               : (Qt.application.arguments.indexOf("--storage") >= 0 ? "storage" : "battery"))))
     property bool startInSettings: Qt.application.arguments.indexOf("--settings") >= 0
                                    || Qt.application.arguments.indexOf("--sound") >= 0
                                    || Qt.application.arguments.indexOf("--display") >= 0
                                    || Qt.application.arguments.indexOf("--storage") >= 0
                                    || Qt.application.arguments.indexOf("--wifi") >= 0
                                    || Qt.application.arguments.indexOf("--wifi-keyboard") >= 0
+                                   || Qt.application.arguments.indexOf("--ethernet") >= 0
 
     function updateClock() {
         var now = new Date()
@@ -76,6 +79,12 @@ ApplicationWindow {
         if (signal >= 75) return "#34C759"
         if (signal >= 45) return "#FF9F0A"
         return "#FF3B30"
+    }
+
+    function ethernetDuplexText(duplex) {
+        if (duplex === "full") return "全双工"
+        if (duplex === "half") return "半双工"
+        return "--"
     }
 
     ListModel {
@@ -295,11 +304,12 @@ ApplicationWindow {
             color: window.canvas
             property string section: window.initialSettingsSection
             readonly property int sectionIndex: section === "wifi" ? 0
-                                                : section === "battery" ? 1
-                                                : section === "sound" ? 2
-                                                : section === "ch592" ? 3
-                                                : section === "display" ? 4
-                                                : section === "storage" ? 5 : 6
+                                                : section === "ethernet" ? 1
+                                                : section === "battery" ? 2
+                                                : section === "sound" ? 3
+                                                : section === "ch592" ? 4
+                                                : section === "display" ? 5
+                                                : section === "storage" ? 6 : 7
 
             Rectangle {
                 id: settingsSidebar
@@ -319,6 +329,7 @@ ApplicationWindow {
                     }
 
                     SettingsNavRow { title: "Wi-Fi"; icon: "qrc:/assets/icons/wifi.svg"; accent: window.mint; selected: settingsPage.section === "wifi"; onClicked: settingsPage.section = "wifi" }
+                    SettingsNavRow { title: "有线网络"; icon: "qrc:/assets/icons/ethernet-port.svg"; accent: "#4A90E2"; selected: settingsPage.section === "ethernet"; onClicked: settingsPage.section = "ethernet" }
                     SettingsNavRow { title: "电池"; icon: "qrc:/assets/icons/battery-charging.svg"; accent: "#F1A244"; selected: settingsPage.section === "battery"; onClicked: settingsPage.section = "battery" }
                     SettingsNavRow { title: "声音"; icon: "qrc:/assets/icons/volume-2.svg"; accent: window.pink; selected: settingsPage.section === "sound"; onClicked: settingsPage.section = "sound" }
                     SettingsNavRow { title: "隔空喵传"; icon: "qrc:/assets/icons/cpu.svg"; accent: window.mint; selected: settingsPage.section === "ch592"; onClicked: settingsPage.section = "ch592" }
@@ -335,6 +346,7 @@ ApplicationWindow {
                     anchors.fill: parent
                     currentIndex: settingsPage.sectionIndex
                     Loader { active: true; sourceComponent: wifiSettings }
+                    Loader { active: true; sourceComponent: ethernetSettings }
                     Loader { active: true; sourceComponent: batterySettings }
                     Loader { active: true; sourceComponent: soundSettings }
                     Loader { active: true; sourceComponent: ch592Settings }
@@ -470,6 +482,81 @@ ApplicationWindow {
                             color: window.secondary; font.family: window.uiFont; font.pixelSize: 16
                             topPadding: 24
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    Component {
+        id: ethernetSettings
+        Item {
+            id: ethernetPage
+            readonly property int connectedCount: {
+                var count = 0
+                for (var i = 0; i < systemBackend.ethernetPorts.length; ++i) {
+                    if (systemBackend.ethernetPorts[i].connected) ++count
+                }
+                return count
+            }
+            readonly property string connectionSummary: connectedCount === 0
+                                                        ? "两个网口均未连接"
+                                                        : (connectedCount === 1
+                                                           ? "已连接 1 个网口"
+                                                           : "两个网口均已连接")
+
+            Column {
+                anchors { left: parent.left; right: parent.right; top: parent.top; margins: 30 }
+                spacing: 16
+
+                RowLayout {
+                    width: parent.width
+                    ColumnLayout {
+                        Layout.fillWidth: true; spacing: 2
+                        Text { text: "有线网络"; color: window.ink; font.family: window.uiFont; font.pixelSize: 34; font.weight: Font.Bold }
+                        Text { text: ethernetPage.connectionSummary; color: window.secondary; font.family: window.uiFont; font.pixelSize: 18 }
+                    }
+                    Rectangle {
+                        Layout.preferredWidth: 134; Layout.preferredHeight: 42; radius: 14
+                        color: "#EDF5FF"
+                        Row {
+                            anchors.centerIn: parent; spacing: 8
+                            Rectangle { width: 9; height: 9; radius: 5; color: ethernetPage.connectedCount > 0 ? "#34C759" : "#8E98A8"; anchors.verticalCenter: parent.verticalCenter }
+                            Text { text: "2 个物理接口"; color: "#41678F"; font.family: window.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold }
+                        }
+                    }
+                }
+
+                Column {
+                    width: parent.width; spacing: 14
+                    Repeater {
+                        model: systemBackend.ethernetPorts
+                        delegate: EthernetPortCard {
+                            width: parent.width
+                            port: modelData
+                            portNumber: index + 1
+                            accent: index === 0 ? "#438DE5" : "#8B68E8"
+                            tint: index === 0 ? "#F0F7FF" : "#F7F2FF"
+                            outline: index === 0 ? "#C9E1FA" : "#DED0F8"
+                        }
+                    }
+                    Text {
+                        visible: systemBackend.ethernetPorts.length === 0
+                        width: parent.width; topPadding: 80
+                        horizontalAlignment: Text.AlignHCenter
+                        text: "正在读取网口状态…"
+                        color: window.secondary; font.family: window.uiFont; font.pixelSize: 17
+                    }
+                }
+
+                Rectangle {
+                    visible: systemBackend.ethernetPorts.length > 0
+                    width: parent.width; height: 52; radius: 16
+                    color: "#F7F7F9"
+                    Row {
+                        anchors.centerIn: parent; spacing: 9
+                        Rectangle { width: 8; height: 8; radius: 4; color: "#A6A1AB"; anchors.verticalCenter: parent.verticalCenter }
+                        Text { text: "插入网线后将自动获取网络地址"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 15 }
                     }
                 }
             }
@@ -1110,6 +1197,106 @@ ApplicationWindow {
             font.family: window.uiFont; font.pixelSize: 17; font.weight: Font.Medium
         }
         MouseArea { id: keyMouse; anchors.fill: parent; onClicked: parent.tapped() }
+    }
+
+    component EthernetPortCard: Rectangle {
+        property var port: ({})
+        property int portNumber: 1
+        property color accent: "#438DE5"
+        property color tint: "#F0F7FF"
+        property color outline: "#C9E1FA"
+        readonly property bool connected: port && port.connected === true
+        readonly property string interfaceName: port && port.name ? port.name : "--"
+        height: 210
+        radius: 22
+        color: tint
+        border.color: outline
+        border.width: 1
+
+        RowLayout {
+            id: ethernetHeader
+            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 18 }
+            height: 62; spacing: 14
+            Rectangle {
+                Layout.preferredWidth: 56; Layout.preferredHeight: 56; radius: 17
+                color: accent
+                Image {
+                    anchors.centerIn: parent; width: 31; height: 31
+                    source: "qrc:/assets/icons/ethernet-port.svg"
+                    sourceSize.width: 62; sourceSize.height: 62; smooth: true
+                }
+            }
+            ColumnLayout {
+                Layout.fillWidth: true; spacing: 2
+                Text {
+                    text: "网口 " + portNumber + "  ·  " + interfaceName
+                    color: window.ink; font.family: window.uiFont; font.pixelSize: 22; font.weight: Font.DemiBold
+                }
+                Text {
+                    text: connected
+                          ? ((port.ipv4 || "").length > 0 ? "已接入局域网" : "网线已连接，正在获取地址")
+                          : "未连接，请插入网线"
+                    color: window.secondary; font.family: window.uiFont; font.pixelSize: 15
+                }
+            }
+            Rectangle {
+                Layout.preferredWidth: connected ? 92 : 82
+                Layout.preferredHeight: 36; radius: 13
+                color: connected ? "#DDF5E7" : "#E8E8ED"
+                Row {
+                    anchors.centerIn: parent; spacing: 7
+                    Rectangle { width: 8; height: 8; radius: 4; color: connected ? "#26A65B" : "#98949D"; anchors.verticalCenter: parent.verticalCenter }
+                    Text {
+                        text: connected ? "已连接" : "未连接"
+                        color: connected ? "#20844A" : "#6F6A74"
+                        font.family: window.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            anchors { left: parent.left; right: parent.right; top: ethernetHeader.bottom; leftMargin: 18; rightMargin: 18; topMargin: 14 }
+            height: 1; color: outline
+        }
+
+        RowLayout {
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 20; rightMargin: 20; bottomMargin: 20 }
+            height: 74; spacing: 22
+            ColumnLayout {
+                Layout.preferredWidth: 218; spacing: 5
+                Text { text: "IPv4 地址"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 14 }
+                Text {
+                    text: connected ? ((port.ipv4 || "").length > 0 ? port.ipv4 : "正在获取…") : "--"
+                    color: window.ink; font.family: window.uiFont; font.pixelSize: 17; font.weight: Font.DemiBold
+                    elide: Text.ElideRight; Layout.fillWidth: true
+                }
+            }
+            Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 52; color: outline }
+            ColumnLayout {
+                Layout.preferredWidth: 150; spacing: 5
+                Text { text: "连接速率"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 14 }
+                Text {
+                    text: connected && port.speed > 0
+                          ? port.speed + " Mb/s · " + window.ethernetDuplexText(port.duplex)
+                          : "未协商"
+                    color: window.ink; font.family: window.uiFont; font.pixelSize: 16; font.weight: Font.DemiBold
+                }
+            }
+            Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 52; color: outline }
+            ColumnLayout {
+                Layout.fillWidth: true; spacing: 5
+                Text {
+                    text: port && port.mtu > 0 ? "硬件地址  ·  MTU " + port.mtu : "硬件地址"
+                    color: window.secondary; font.family: window.uiFont; font.pixelSize: 14
+                }
+                Text {
+                    text: port && port.mac ? port.mac.toUpperCase() : "--"
+                    color: window.ink; font.family: window.uiFont; font.pixelSize: 16; font.weight: Font.DemiBold
+                    elide: Text.ElideRight; Layout.fillWidth: true
+                }
+            }
+        }
     }
 
     component StorageDiskCard: Rectangle {

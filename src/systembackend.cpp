@@ -1,9 +1,13 @@
 #include "systembackend.h"
 
 #include <QtConcurrent/QtConcurrentRun>
+#include <QAbstractSocket>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QProcess>
+#include <QNetworkAddressEntry>
+#include <QNetworkInterface>
 #include <QRegularExpression>
 #include <QSet>
 #include <QStorageInfo>
@@ -131,6 +135,46 @@ QStringList splitNmcliTerseLine(const QString &line)
     if (escaped) current.append(QLatin1Char('\\'));
     fields.append(current);
     return fields;
+}
+
+QVariantList collectEthernetPorts()
+{
+    QVariantList ports;
+    for (const QString &name : {QStringLiteral("eth0"), QStringLiteral("eth1")}) {
+        const QString base = QStringLiteral("/sys/class/net/") + name;
+        if (!QFileInfo::exists(base)) continue;
+
+        qint64 carrierValue = 0;
+        const bool carrier = readInteger(base + QStringLiteral("/carrier"), &carrierValue) && carrierValue == 1;
+        qint64 speedValue = -1;
+        readInteger(base + QStringLiteral("/speed"), &speedValue);
+        qint64 mtuValue = 0;
+        readInteger(base + QStringLiteral("/mtu"), &mtuValue);
+
+        QString ipv4;
+        QString ipv6;
+        const QNetworkInterface interface = QNetworkInterface::interfaceFromName(name);
+        for (const QNetworkAddressEntry &address : interface.addressEntries()) {
+            const QHostAddress ip = address.ip();
+            const QString formatted = ip.toString() + QLatin1Char('/') + QString::number(address.prefixLength());
+            if (ip.protocol() == QAbstractSocket::IPv4Protocol && ipv4.isEmpty()) ipv4 = formatted;
+            else if (ip.protocol() == QAbstractSocket::IPv6Protocol && ipv6.isEmpty()
+                     && !ip.isLinkLocal()) ipv6 = formatted;
+        }
+
+        QVariantMap port;
+        port.insert(QStringLiteral("name"), name);
+        port.insert(QStringLiteral("connected"), carrier);
+        port.insert(QStringLiteral("state"), readTextFile(base + QStringLiteral("/operstate")));
+        port.insert(QStringLiteral("speed"), carrier && speedValue > 0 ? static_cast<int>(speedValue) : 0);
+        port.insert(QStringLiteral("duplex"), carrier ? readTextFile(base + QStringLiteral("/duplex")) : QString());
+        port.insert(QStringLiteral("mac"), readTextFile(base + QStringLiteral("/address")));
+        port.insert(QStringLiteral("mtu"), static_cast<int>(mtuValue));
+        port.insert(QStringLiteral("ipv4"), ipv4);
+        port.insert(QStringLiteral("ipv6"), ipv6);
+        ports.append(port);
+    }
+    return ports;
 }
 
 QVariantMap collectStatus()
@@ -285,6 +329,7 @@ QVariantMap collectStatus()
     result.insert(QStringLiteral("brightnessMax"), brightnessMax);
     result.insert(QStringLiteral("displayBrightnessPercent"), brightnessPercent);
     result.insert(QStringLiteral("brightnessAvailable"), !backlightPath.isEmpty());
+    result.insert(QStringLiteral("ethernetPorts"), collectEthernetPorts());
     return result;
 }
 
@@ -431,6 +476,7 @@ QString SystemBackend::wifiName() const { return m_wifiName; }
 bool SystemBackend::wifiConnected() const { return !m_wifiName.isEmpty(); }
 bool SystemBackend::wifiScanning() const { return m_wifiScanWatcher.isRunning(); }
 QVariantList SystemBackend::wifiNetworks() const { return m_wifiNetworks; }
+QVariantList SystemBackend::ethernetPorts() const { return m_ethernetPorts; }
 bool SystemBackend::batteryAvailable() const { return m_batteryAvailable; }
 int SystemBackend::batteryPercent() const { return m_batteryPercent; }
 QString SystemBackend::batteryStatus() const { return m_batteryStatus; }
@@ -609,6 +655,12 @@ void SystemBackend::applyStatusSnapshot(const QVariantMap &snapshot)
         m_displayBrightnessPercent = brightnessPercent;
         m_brightnessAvailable = brightnessAvailable;
         emit displayChanged();
+    }
+
+    const QVariantList ethernetPorts = snapshot.value(QStringLiteral("ethernetPorts")).toList();
+    if (ethernetPorts != m_ethernetPorts) {
+        m_ethernetPorts = ethernetPorts;
+        emit ethernetChanged();
     }
 }
 
