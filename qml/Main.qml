@@ -28,10 +28,13 @@ ApplicationWindow {
     property int tapCount: 0
     property string initialSettingsSection: Qt.application.arguments.indexOf("--sound") >= 0
                                             ? "sound"
-                                            : (Qt.application.arguments.indexOf("--display") >= 0 ? "display" : "battery")
+                                            : (Qt.application.arguments.indexOf("--display") >= 0
+                                               ? "display"
+                                               : (Qt.application.arguments.indexOf("--storage") >= 0 ? "storage" : "battery"))
     property bool startInSettings: Qt.application.arguments.indexOf("--settings") >= 0
                                    || Qt.application.arguments.indexOf("--sound") >= 0
                                    || Qt.application.arguments.indexOf("--display") >= 0
+                                   || Qt.application.arguments.indexOf("--storage") >= 0
 
     function updateClock() {
         var now = new Date()
@@ -560,13 +563,29 @@ ApplicationWindow {
         id: storageSettings
         SettingsPageBody {
             title: "存储空间"
-            subtitle: systemBackend.diskUsed + " 已使用，共 " + systemBackend.diskTotal
-            ProgressBar { width: parent.width; from: 0; to: 100; value: systemBackend.diskPercent }
-            IosGroup {
+            subtitle: "系统盘与扩展存储"
+            StorageDiskCard {
                 width: parent.width
-                IosInfoRow { label: "已使用"; value: systemBackend.diskUsed }
-                IosInfoRow { label: "总容量"; value: systemBackend.diskTotal }
-                IosInfoRow { label: "使用比例"; value: systemBackend.diskPercent + "%"; last: true }
+                title: "系统存储"
+                detail: systemBackend.diskUsed + " 已使用，共 " + systemBackend.diskTotal
+                percent: systemBackend.diskPercent
+                accent: "#7B6DF0"
+                accent2: "#D875D4"
+            }
+            StorageDiskCard {
+                width: parent.width
+                title: systemBackend.nvmeModel.length ? systemBackend.nvmeModel : "NVMe 固态硬盘"
+                detail: !systemBackend.nvmeAvailable
+                        ? "未检测到硬盘，请检查 PCIe 连接"
+                        : (systemBackend.nvmeMounted
+                           ? systemBackend.nvmeUsed + " 已使用，共 " + systemBackend.nvmeTotal
+                             + (systemBackend.nvmeMountPoint.length ? " · " + systemBackend.nvmeMountPoint : "")
+                           : (systemBackend.nvmeTotal.length ? systemBackend.nvmeTotal + " · 未挂载" : "已检测，未挂载"))
+                percent: systemBackend.nvmePercent
+                available: systemBackend.nvmeAvailable
+                mounted: systemBackend.nvmeMounted
+                accent: "#4A90E2"
+                accent2: "#42C7C2"
             }
         }
     }
@@ -810,5 +829,83 @@ ApplicationWindow {
             Text { text: value; color: window.secondary; font.family: window.uiFont; font.pixelSize: 17 }
         }
         Rectangle { visible: !last; anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 18 } height: 1; color: window.separator }
+    }
+
+    component StorageDiskCard: Rectangle {
+        property string title: ""
+        property string detail: ""
+        property int percent: 0
+        property color accent: window.purple
+        property color accent2: accent
+        property bool available: true
+        property bool mounted: true
+        height: available && mounted ? 170 : 104
+        radius: 20
+        color: "#F9F9FB"
+        border.color: window.separator
+        border.width: 1
+
+        RowLayout {
+            id: diskHeader
+            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 18 }
+            height: 54
+            spacing: 14
+            Rectangle {
+                Layout.preferredWidth: 50; Layout.preferredHeight: 50
+                radius: 14
+                color: available ? accent : "#B9B5BE"
+                Image {
+                    anchors.centerIn: parent
+                    width: 28; height: 28
+                    source: "qrc:/assets/icons/hard-drive.svg"
+                    sourceSize.width: 56; sourceSize.height: 56
+                }
+            }
+            ColumnLayout {
+                Layout.fillWidth: true; spacing: 2
+                Text { text: title; color: window.ink; font.family: window.uiFont; font.pixelSize: 20; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.fillWidth: true }
+                Text { text: detail; color: window.secondary; font.family: window.uiFont; font.pixelSize: 15; elide: Text.ElideRight; Layout.fillWidth: true }
+            }
+            Text {
+                text: !available ? "未检测到" : (mounted ? percent + "%" : "未挂载")
+                color: available ? window.secondary : "#8E8993"
+                font.family: window.uiFont; font.pixelSize: 17; font.weight: Font.DemiBold
+            }
+        }
+
+        Rectangle {
+            id: storageTrack
+            visible: available && mounted
+            anchors { left: parent.left; right: parent.right; top: diskHeader.bottom; leftMargin: 18; rightMargin: 18; topMargin: 15 }
+            height: 14; radius: 7
+            color: "#E7E5EA"
+            clip: true
+            Rectangle {
+                width: percent > 0 ? Math.max(height, parent.width * Math.max(0, Math.min(100, percent)) / 100) : 0
+                height: parent.height; radius: parent.radius
+                gradient: Gradient {
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0.0; color: accent }
+                    GradientStop { position: 1.0; color: accent2 }
+                }
+            }
+        }
+
+        RowLayout {
+            visible: available && mounted
+            anchors { left: parent.left; right: parent.right; top: storageTrack.bottom; leftMargin: 18; rightMargin: 18; topMargin: 12 }
+            spacing: 22
+            Row {
+                spacing: 7
+                Rectangle { width: 10; height: 10; radius: 5; color: accent; anchors.verticalCenter: parent.verticalCenter }
+                Text { text: "已使用"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 14 }
+            }
+            Row {
+                spacing: 7
+                Rectangle { width: 10; height: 10; radius: 5; color: "#D2CFD7"; anchors.verticalCenter: parent.verticalCenter }
+                Text { text: "可用空间"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 14 }
+            }
+            Item { Layout.fillWidth: true }
+        }
     }
 }

@@ -16,6 +16,13 @@ class SystemBackend final : public QObject
     Q_PROPERTY(QString diskUsed READ diskUsed NOTIFY storageChanged)
     Q_PROPERTY(QString diskTotal READ diskTotal NOTIFY storageChanged)
     Q_PROPERTY(int diskPercent READ diskPercent NOTIFY storageChanged)
+    Q_PROPERTY(bool nvmeAvailable READ nvmeAvailable NOTIFY storageChanged)
+    Q_PROPERTY(bool nvmeMounted READ nvmeMounted NOTIFY storageChanged)
+    Q_PROPERTY(QString nvmeModel READ nvmeModel NOTIFY storageChanged)
+    Q_PROPERTY(QString nvmeMountPoint READ nvmeMountPoint NOTIFY storageChanged)
+    Q_PROPERTY(QString nvmeUsed READ nvmeUsed NOTIFY storageChanged)
+    Q_PROPERTY(QString nvmeTotal READ nvmeTotal NOTIFY storageChanged)
+    Q_PROPERTY(int nvmePercent READ nvmePercent NOTIFY storageChanged)
     Q_PROPERTY(QString wifiName READ wifiName NOTIFY wifiChanged)
     Q_PROPERTY(bool wifiConnected READ wifiConnected NOTIFY wifiChanged)
     Q_PROPERTY(QVariantList wifiNetworks READ wifiNetworks NOTIFY wifiChanged)
@@ -46,6 +53,13 @@ public:
     QString diskUsed() const;
     QString diskTotal() const;
     int diskPercent() const;
+    bool nvmeAvailable() const;
+    bool nvmeMounted() const;
+    QString nvmeModel() const;
+    QString nvmeMountPoint() const;
+    QString nvmeUsed() const;
+    QString nvmeTotal() const;
+    int nvmePercent() const;
     QString wifiName() const;
     bool wifiConnected() const;
     QVariantList wifiNetworks() const;
@@ -95,6 +109,13 @@ private:
     QString m_diskUsed;
     QString m_diskTotal;
     int m_diskPercent = 0;
+    bool m_nvmeAvailable = false;
+    bool m_nvmeMounted = false;
+    QString m_nvmeModel;
+    QString m_nvmeMountPoint;
+    QString m_nvmeUsed;
+    QString m_nvmeTotal;
+    int m_nvmePercent = 0;
     QString m_wifiName;
     QVariantList m_wifiNetworks;
     bool m_batteryAvailable = false;
