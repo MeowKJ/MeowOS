@@ -849,17 +849,19 @@ ApplicationWindow {
         id: passwordDialog
         property string ssid: ""
         property bool shift: false
+        property bool symbols: false
         property bool showPassword: false
         function openFor(networkName) {
             ssid = networkName
             shift = false
+            symbols = false
             showPassword = false
             wifiPassword.text = ""
             open()
         }
         function typeKey(key) {
             wifiPassword.text += key
-            if (shift) shift = false
+            if (shift && !symbols) shift = false
         }
         function backspace() {
             if (wifiPassword.text.length > 0) wifiPassword.text = wifiPassword.text.slice(0, -1)
@@ -873,62 +875,136 @@ ApplicationWindow {
             wifiPassword.text = ""
         }
         parent: scene; anchors.fill: parent; z: 2100; visible: false
-        Rectangle { anchors.fill: parent; color: "#66000000"; MouseArea { anchors.fill: parent } }
+        Rectangle { anchors.fill: parent; color: "#590B0A0D"; MouseArea { anchors.fill: parent } }
         Rectangle {
-            width: 940; height: 470; anchors.centerIn: parent
-            radius: 28; color: "white"; border.color: window.separator; border.width: 1
+            width: 840; height: 154
+            anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: 78 }
+            radius: 24; color: "#FCFBFD"; border.color: "#DEDCE2"; border.width: 1
             Column {
-                anchors.fill: parent; anchors.margins: 24; spacing: 11
+                anchors.fill: parent; anchors.margins: 22; spacing: 13
                 RowLayout {
-                    width: parent.width; height: 38
-                    Text { text: "连接到 “" + passwordDialog.ssid + "”"; color: window.ink; font.family: window.uiFont; font.pixelSize: 25; font.weight: Font.Bold; Layout.fillWidth: true }
-                    KeyboardKey { label: passwordDialog.showPassword ? "隐藏" : "显示"; keyWidth: 82; onTapped: passwordDialog.showPassword = !passwordDialog.showPassword }
+                    width: parent.width; height: 46
+                    ColumnLayout {
+                        Layout.fillWidth: true; spacing: 0
+                        Text {
+                            text: "输入 Wi-Fi 密码"
+                            color: window.ink; font.family: window.uiFont; font.pixelSize: 23; font.weight: Font.Bold
+                        }
+                        Text {
+                            text: passwordDialog.ssid
+                            color: window.secondary; font.family: window.uiFont; font.pixelSize: 14
+                            elide: Text.ElideRight; Layout.fillWidth: true
+                        }
+                    }
+                    Text {
+                        text: "安全网络"
+                        color: "#5D4BC7"; font.family: window.uiFont; font.pixelSize: 14; font.weight: Font.DemiBold
+                        leftPadding: 12; rightPadding: 12; topPadding: 7; bottomPadding: 7
+                        Rectangle { anchors.fill: parent; z: -1; radius: 12; color: "#EEEAFE" }
+                    }
                 }
-                TextField {
-                    id: wifiPassword
-                    width: parent.width; height: 54
-                    placeholderText: "输入 Wi-Fi 密码"
-                    echoMode: passwordDialog.showPassword ? TextInput.Normal : TextInput.Password
-                    font.family: window.uiFont; font.pixelSize: 20
-                    leftPadding: 16; rightPadding: 16
-                    background: Rectangle { radius: 14; color: "#F5F3F7"; border.color: wifiPassword.activeFocus ? window.purple : window.separator; border.width: 2 }
-                    Keys.onReturnPressed: passwordDialog.submit()
+                Item {
+                    width: parent.width; height: 58
+                    TextField {
+                        id: wifiPassword
+                        anchors.fill: parent
+                        placeholderText: "密码"
+                        echoMode: passwordDialog.showPassword ? TextInput.Normal : TextInput.Password
+                        font.family: window.uiFont; font.pixelSize: 20
+                        leftPadding: 17; rightPadding: 98
+                        background: Rectangle {
+                            radius: 13; color: "white"
+                            border.color: wifiPassword.activeFocus ? "#7D6CF2" : "#D8D5DD"; border.width: 2
+                        }
+                        Keys.onReturnPressed: passwordDialog.submit()
+                    }
+                    Rectangle {
+                        anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                        width: 78; height: 40; radius: 10
+                        color: showPasswordMouse.pressed ? "#E1DDF8" : "#EEEAFE"
+                        Text {
+                            anchors.centerIn: parent
+                            text: passwordDialog.showPassword ? "隐藏" : "显示"
+                            color: "#6555D5"; font.family: window.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold
+                        }
+                        MouseArea { id: showPasswordMouse; anchors.fill: parent; onClicked: passwordDialog.showPassword = !passwordDialog.showPassword }
+                    }
                 }
+            }
+        }
+
+        Rectangle {
+            id: ipadKeyboard
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+            height: 320; color: "#CED2D9"
+            border.color: "#B9BEC7"; border.width: 1
+
+            Column {
+                anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: 18; rightMargin: 18 }
+                spacing: 9
                 Row {
-                    anchors.horizontalCenter: parent.horizontalCenter; spacing: 8
-                    Repeater { model: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]; delegate: KeyboardKey { label: modelData; onTapped: passwordDialog.typeKey(modelData) } }
-                }
-                Row {
-                    anchors.horizontalCenter: parent.horizontalCenter; spacing: 8
+                    anchors.horizontalCenter: parent.horizontalCenter; spacing: 9
                     Repeater {
-                        model: ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"]
-                        delegate: KeyboardKey { label: passwordDialog.shift ? modelData : modelData.toLowerCase(); onTapped: passwordDialog.typeKey(label) }
+                        model: passwordDialog.symbols
+                               ? ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
+                               : ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"]
+                        delegate: IpadKey {
+                            label: passwordDialog.symbols
+                                   ? modelData
+                                   : (passwordDialog.shift ? modelData : modelData.toLowerCase())
+                            keyWidth: 108
+                            onTapped: passwordDialog.typeKey(label)
+                        }
                     }
                 }
                 Row {
-                    anchors.horizontalCenter: parent.horizontalCenter; spacing: 8
+                    anchors.horizontalCenter: parent.horizontalCenter; spacing: 9
                     Repeater {
-                        model: ["A", "S", "D", "F", "G", "H", "J", "K", "L"]
-                        delegate: KeyboardKey { label: passwordDialog.shift ? modelData : modelData.toLowerCase(); onTapped: passwordDialog.typeKey(label) }
+                        model: passwordDialog.symbols
+                               ? ["@", "#", "$", "%", "&", "*", "(", ")", "\""]
+                               : ["A", "S", "D", "F", "G", "H", "J", "K", "L"]
+                        delegate: IpadKey {
+                            label: passwordDialog.symbols
+                                   ? modelData
+                                   : (passwordDialog.shift ? modelData : modelData.toLowerCase())
+                            keyWidth: 108
+                            onTapped: passwordDialog.typeKey(label)
+                        }
                     }
                 }
                 Row {
-                    anchors.horizontalCenter: parent.horizontalCenter; spacing: 8
-                    KeyboardKey { label: "Shift"; keyWidth: 84; active: passwordDialog.shift; onTapped: passwordDialog.shift = !passwordDialog.shift }
-                    Repeater {
-                        model: ["Z", "X", "C", "V", "B", "N", "M"]
-                        delegate: KeyboardKey { label: passwordDialog.shift ? modelData : modelData.toLowerCase(); onTapped: passwordDialog.typeKey(label) }
+                    anchors.horizontalCenter: parent.horizontalCenter; spacing: 9
+                    IpadKey {
+                        label: passwordDialog.symbols ? "#+=" : "⇧"
+                        keyWidth: 142; functionKey: true; active: passwordDialog.shift
+                        onTapped: if (!passwordDialog.symbols) passwordDialog.shift = !passwordDialog.shift
                     }
-                    KeyboardKey { label: "⌫"; keyWidth: 84; onTapped: passwordDialog.backspace() }
+                    Repeater {
+                        model: passwordDialog.symbols
+                               ? ["-", "_", "=", "+", "/", "\\", "?"]
+                               : ["Z", "X", "C", "V", "B", "N", "M"]
+                        delegate: IpadKey {
+                            label: passwordDialog.symbols
+                                   ? modelData
+                                   : (passwordDialog.shift ? modelData : modelData.toLowerCase())
+                            keyWidth: 108
+                            onTapped: passwordDialog.typeKey(label)
+                        }
+                    }
+                    IpadKey { label: "⌫"; keyWidth: 142; functionKey: true; onTapped: passwordDialog.backspace() }
                 }
                 Row {
-                    anchors.horizontalCenter: parent.horizontalCenter; spacing: 10
-                    KeyboardKey { label: "."; keyWidth: 60; onTapped: passwordDialog.typeKey(".") }
-                    KeyboardKey { label: "-"; keyWidth: 60; onTapped: passwordDialog.typeKey("-") }
-                    KeyboardKey { label: "空格"; keyWidth: 250; onTapped: passwordDialog.typeKey(" ") }
-                    KeyboardKey { label: "_"; keyWidth: 60; onTapped: passwordDialog.typeKey("_") }
-                    KeyboardKey { label: "取消"; keyWidth: 100; onTapped: passwordDialog.close() }
-                    KeyboardKey { label: "连接"; keyWidth: 120; accent: true; onTapped: passwordDialog.submit() }
+                    anchors.horizontalCenter: parent.horizontalCenter; spacing: 9
+                    IpadKey {
+                        label: passwordDialog.symbols ? "ABC" : "123"
+                        keyWidth: 142; functionKey: true
+                        onTapped: { passwordDialog.symbols = !passwordDialog.symbols; passwordDialog.shift = false }
+                    }
+                    IpadKey { label: ","; keyWidth: 90; onTapped: passwordDialog.typeKey(",") }
+                    IpadKey { label: "English (US)"; keyWidth: 502; onTapped: passwordDialog.typeKey(" ") }
+                    IpadKey { label: "."; keyWidth: 90; onTapped: passwordDialog.typeKey(".") }
+                    IpadKey { label: "取消"; keyWidth: 130; functionKey: true; onTapped: passwordDialog.close() }
+                    IpadKey { label: "连接"; keyWidth: 180; returnKey: true; onTapped: passwordDialog.submit() }
                 }
             }
         }
@@ -1197,6 +1273,35 @@ ApplicationWindow {
             font.family: window.uiFont; font.pixelSize: 17; font.weight: Font.Medium
         }
         MouseArea { id: keyMouse; anchors.fill: parent; onClicked: parent.tapped() }
+    }
+
+    component IpadKey: Rectangle {
+        property string label: ""
+        property real keyWidth: 108
+        property bool functionKey: false
+        property bool returnKey: false
+        property bool active: false
+        signal tapped()
+        width: keyWidth; height: 58; radius: 8
+        color: ipadKeyMouse.pressed
+               ? (returnKey ? "#0068D7" : (functionKey ? "#969CA6" : "#D9DCE1"))
+               : (returnKey ? "#087CFA" : (active ? "#FFFFFF" : (functionKey ? "#AAB0BA" : "#FFFFFF")))
+        border.color: returnKey ? "#087CFA" : (functionKey && !active ? "#9FA5AF" : "#B8BDC5")
+        border.width: 1
+        Rectangle {
+            visible: !ipadKeyMouse.pressed
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+            height: 2; radius: 1; color: returnKey ? "#0064CA" : "#A3A8B0"; opacity: 0.65
+        }
+        Text {
+            anchors.centerIn: parent
+            text: label
+            color: returnKey ? "white" : "#1D1D1F"
+            font.family: window.uiFont
+            font.pixelSize: label.length > 4 ? 15 : (label.length > 2 ? 17 : 21)
+            font.weight: returnKey || functionKey ? Font.DemiBold : Font.Medium
+        }
+        MouseArea { id: ipadKeyMouse; anchors.fill: parent; onClicked: parent.tapped() }
     }
 
     component EthernetPortCard: Rectangle {
