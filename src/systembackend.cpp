@@ -33,17 +33,37 @@ QString readTextFile(const QString &path)
     return QString::fromLocal8Bit(file.readAll()).trimmed();
 }
 
-QString runProcess(const QString &program, const QStringList &arguments, int timeoutMs = 5000)
+struct ProcessResult {
+    QString output;
+    int exitCode = -1;
+    bool started = false;
+    bool timedOut = false;
+
+    bool ok() const { return started && !timedOut && exitCode == 0; }
+};
+
+ProcessResult runProcessDetailed(const QString &program, const QStringList &arguments, int timeoutMs = 5000)
 {
+    ProcessResult result;
     QProcess process;
     process.setProcessChannelMode(QProcess::MergedChannels);
     process.start(program, arguments);
-    if (!process.waitForStarted(qMin(timeoutMs, 3000)) || !process.waitForFinished(timeoutMs)) {
+    result.started = process.waitForStarted(qMin(timeoutMs, 3000));
+    if (!result.started) return result;
+    if (!process.waitForFinished(timeoutMs)) {
+        result.timedOut = true;
         process.kill();
         process.waitForFinished(500);
-        return QString();
     }
-    return QString::fromLocal8Bit(process.readAll()).trimmed();
+    result.output = QString::fromLocal8Bit(process.readAll()).trimmed();
+    result.exitCode = process.exitCode();
+    return result;
+}
+
+QString runProcess(const QString &program, const QStringList &arguments, int timeoutMs = 5000)
+{
+    const ProcessResult result = runProcessDetailed(program, arguments, timeoutMs);
+    return result.started && !result.timedOut ? result.output : QString();
 }
 
 bool readInteger(const QString &path, qint64 *value)
@@ -333,8 +353,37 @@ QVariantMap collectStatus()
     return result;
 }
 
-QVariantList collectWifiNetworks()
+QString wifiFailureMessage(const ProcessResult &result, const QString &operation)
 {
+    if (result.timedOut) {
+        if (operation == QStringLiteral("connect")) return QStringLiteral("Wi-Fi 连接超时");
+        if (operation == QStringLiteral("forget")) return QStringLiteral("删除网络超时");
+        return QStringLiteral("Wi-Fi 扫描超时");
+    }
+    const QString output = result.output;
+    if (output.contains(QStringLiteral("not authorized"), Qt::CaseInsensitive)) {
+        return operation == QStringLiteral("scan") ? QStringLiteral("没有 Wi-Fi 扫描权限")
+                                                    : QStringLiteral("没有修改网络的权限");
+    }
+    if (output.contains(QStringLiteral("No network with SSID"), Qt::CaseInsensitive)
+            || output.contains(QStringLiteral("not found"), Qt::CaseInsensitive)) {
+        return QStringLiteral("未找到该网络，请重新扫描");
+    }
+    if (output.contains(QStringLiteral("Secrets were required"), Qt::CaseInsensitive)
+            || output.contains(QStringLiteral("password"), Qt::CaseInsensitive)) {
+        return QStringLiteral("密码错误或认证失败");
+    }
+    if (output.contains(QStringLiteral("unavailable"), Qt::CaseInsensitive)) {
+        return QStringLiteral("无线网卡当前不可用");
+    }
+    if (operation == QStringLiteral("connect")) return QStringLiteral("Wi-Fi 连接失败");
+    if (operation == QStringLiteral("forget")) return QStringLiteral("删除网络失败");
+    return QStringLiteral("Wi-Fi 扫描失败");
+}
+
+QVariantMap collectWifiNetworks()
+{
+    QVariantMap result;
     QSet<QString> savedNetworks;
     const QString savedOutput = runProcess(QStringLiteral("nmcli"),
                                            {QStringLiteral("-t"), QStringLiteral("-e"), QStringLiteral("yes"),
@@ -347,15 +396,21 @@ QVariantList collectWifiNetworks()
         }
     }
 
-    const QString output = runProcess(QStringLiteral("nmcli"),
-                                      {QStringLiteral("-t"), QStringLiteral("-e"), QStringLiteral("yes"),
-                                       QStringLiteral("-f"),
-                                       QStringLiteral("IN-USE,SSID,SIGNAL,CHAN,FREQ,RATE,SECURITY,BARS"),
-                                       QStringLiteral("device"), QStringLiteral("wifi"), QStringLiteral("list"),
-                                       QStringLiteral("--rescan"), QStringLiteral("yes")}, 12000);
+    const ProcessResult scanResult = runProcessDetailed(QStringLiteral("nmcli"),
+                                                         {QStringLiteral("device"), QStringLiteral("wifi"),
+                                                          QStringLiteral("rescan"), QStringLiteral("ifname"),
+                                                          QStringLiteral("wlan0")}, 12000);
+    const ProcessResult listResult = runProcessDetailed(QStringLiteral("nmcli"),
+                                                         {QStringLiteral("-t"), QStringLiteral("-e"),
+                                                          QStringLiteral("yes"), QStringLiteral("-f"),
+                                                          QStringLiteral("IN-USE,SSID,SIGNAL,CHAN,FREQ,RATE,SECURITY,BARS"),
+                                                          QStringLiteral("device"), QStringLiteral("wifi"),
+                                                          QStringLiteral("list"), QStringLiteral("ifname"),
+                                                          QStringLiteral("wlan0"), QStringLiteral("--rescan"),
+                                                          QStringLiteral("no")}, 5000);
     QVariantList networks;
     QSet<QString> seen;
-    for (const QString &line : output.split(QRegularExpression(QStringLiteral("\\r?\\n")), Qt::SkipEmptyParts)) {
+    for (const QString &line : listResult.output.split(QRegularExpression(QStringLiteral("\\r?\\n")), Qt::SkipEmptyParts)) {
         const QStringList fields = splitNmcliTerseLine(line);
         if (fields.size() < 8 || fields.at(1).isEmpty() || seen.contains(fields.at(1))) continue;
         seen.insert(fields.at(1));
@@ -379,25 +434,35 @@ QVariantList collectWifiNetworks()
         item.insert(QStringLiteral("saved"), savedNetworks.contains(fields.at(1)));
         networks.append(item);
     }
-    return networks;
+    const bool ok = scanResult.ok() && listResult.ok();
+    result.insert(QStringLiteral("ok"), ok);
+    result.insert(QStringLiteral("networks"), networks);
+    result.insert(QStringLiteral("message"), ok ? QString()
+                                                 : wifiFailureMessage(scanResult.ok() ? listResult : scanResult,
+                                                                      QStringLiteral("scan")));
+    return result;
 }
 
 QVariantMap runWifiOperation(const QString &operation, const QString &ssid, const QString &password)
 {
     QVariantMap result;
-    QString output;
+    ProcessResult processResult;
     if (operation == QStringLiteral("connect")) {
         QStringList arguments{QStringLiteral("device"), QStringLiteral("wifi"), QStringLiteral("connect"), ssid};
         if (!password.isEmpty()) arguments << QStringLiteral("password") << password;
-        output = runProcess(QStringLiteral("nmcli"), arguments, 20000);
+        processResult = runProcessDetailed(QStringLiteral("nmcli"), arguments, 30000);
     } else {
-        output = runProcess(QStringLiteral("nmcli"), {QStringLiteral("connection"), QStringLiteral("delete"),
-                                                       QStringLiteral("id"), ssid}, 8000);
+        processResult = runProcessDetailed(QStringLiteral("nmcli"),
+                                           {QStringLiteral("connection"), QStringLiteral("delete"),
+                                            QStringLiteral("id"), ssid}, 8000);
     }
-    const bool ok = !output.isEmpty() && !output.contains(QStringLiteral("Error"), Qt::CaseInsensitive)
-            && !output.contains(QStringLiteral("错误"), Qt::CaseInsensitive);
+    const bool ok = processResult.ok();
     result.insert(QStringLiteral("ok"), ok);
     result.insert(QStringLiteral("operation"), operation);
+    result.insert(QStringLiteral("message"), ok
+                  ? (operation == QStringLiteral("connect") ? QStringLiteral("Wi-Fi 已连接")
+                                                             : QStringLiteral("已忘记网络"))
+                  : wifiFailureMessage(processResult, operation));
     return result;
 }
 
@@ -442,17 +507,17 @@ SystemBackend::SystemBackend(QObject *parent)
             refreshStatus();
         }
     });
-    connect(&m_wifiScanWatcher, &QFutureWatcher<QVariantList>::finished, this, [this]() {
-        m_wifiNetworks = m_wifiScanWatcher.result();
+    connect(&m_wifiScanWatcher, &QFutureWatcher<QVariantMap>::finished, this, [this]() {
+        const QVariantMap result = m_wifiScanWatcher.result();
+        m_wifiNetworks = result.value(QStringLiteral("networks")).toList();
+        m_wifiScanError = result.value(QStringLiteral("message")).toString();
         emit wifiChanged();
         refreshStatus();
     });
     connect(&m_wifiOperationWatcher, &QFutureWatcher<QVariantMap>::finished, this, [this]() {
         const QVariantMap result = m_wifiOperationWatcher.result();
         const bool ok = result.value(QStringLiteral("ok")).toBool();
-        const bool connecting = result.value(QStringLiteral("operation")).toString() == QStringLiteral("connect");
-        emit operationMessage(connecting ? (ok ? QStringLiteral("Wi-Fi 已连接") : QStringLiteral("Wi-Fi 连接失败"))
-                                         : (ok ? QStringLiteral("已忘记网络") : QStringLiteral("删除网络失败")), ok);
+        emit operationMessage(result.value(QStringLiteral("message")).toString(), ok);
         refreshStatus();
         scanWifi();
     });
@@ -475,6 +540,7 @@ int SystemBackend::nvmePercent() const { return m_nvmePercent; }
 QString SystemBackend::wifiName() const { return m_wifiName; }
 bool SystemBackend::wifiConnected() const { return !m_wifiName.isEmpty(); }
 bool SystemBackend::wifiScanning() const { return m_wifiScanWatcher.isRunning(); }
+QString SystemBackend::wifiScanError() const { return m_wifiScanError; }
 QVariantList SystemBackend::wifiNetworks() const { return m_wifiNetworks; }
 QVariantList SystemBackend::ethernetPorts() const { return m_ethernetPorts; }
 bool SystemBackend::batteryAvailable() const { return m_batteryAvailable; }
@@ -667,6 +733,10 @@ void SystemBackend::applyStatusSnapshot(const QVariantMap &snapshot)
 void SystemBackend::scanWifi()
 {
     if (m_wifiScanWatcher.isRunning()) return;
+    if (!m_wifiScanError.isEmpty()) {
+        m_wifiScanError.clear();
+        emit wifiChanged();
+    }
     m_wifiScanWatcher.setFuture(QtConcurrent::run(collectWifiNetworks));
     emit wifiChanged();
 }

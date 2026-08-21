@@ -26,6 +26,7 @@ class SystemBackend final : public QObject
     Q_PROPERTY(QString wifiName READ wifiName NOTIFY wifiChanged)
     Q_PROPERTY(bool wifiConnected READ wifiConnected NOTIFY wifiChanged)
     Q_PROPERTY(bool wifiScanning READ wifiScanning NOTIFY wifiChanged)
+    Q_PROPERTY(QString wifiScanError READ wifiScanError NOTIFY wifiChanged)
     Q_PROPERTY(QVariantList wifiNetworks READ wifiNetworks NOTIFY wifiChanged)
     Q_PROPERTY(QVariantList ethernetPorts READ ethernetPorts NOTIFY ethernetChanged)
     Q_PROPERTY(bool batteryAvailable READ batteryAvailable NOTIFY powerChanged)
@@ -65,6 +66,7 @@ public:
     QString wifiName() const;
     bool wifiConnected() const;
     bool wifiScanning() const;
+    QString wifiScanError() const;
     QVariantList wifiNetworks() const;
     QVariantList ethernetPorts() const;
     bool batteryAvailable() const;
@@ -122,6 +124,7 @@ private:
     QString m_nvmeTotal;
     int m_nvmePercent = 0;
     QString m_wifiName;
+    QString m_wifiScanError;
     QVariantList m_wifiNetworks;
     QVariantList m_ethernetPorts;
     bool m_batteryAvailable = false;
@@ -143,7 +146,7 @@ private:
     int m_brightnessMax = 0;
     bool m_statusRefreshPending = false;
     QFutureWatcher<QVariantMap> m_statusWatcher;
-    QFutureWatcher<QVariantList> m_wifiScanWatcher;
+    QFutureWatcher<QVariantMap> m_wifiScanWatcher;
     QFutureWatcher<QVariantMap> m_wifiOperationWatcher;
     int m_pendingVolumePercent = 65;
     QTimer m_volumeSetTimer;

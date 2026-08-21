@@ -446,6 +446,21 @@ ApplicationWindow {
                 }
 
                 Text { text: "附近网络"; color: window.ink; font.family: window.uiFont; font.pixelSize: 19; font.weight: Font.DemiBold }
+                Rectangle {
+                    visible: systemBackend.wifiScanError.length > 0
+                    width: parent.width; height: visible ? 52 : 0; radius: 15
+                    color: "#FFF0F1"; border.color: "#FFD0D4"; border.width: 1
+                    RowLayout {
+                        anchors.fill: parent; anchors.leftMargin: 16; anchors.rightMargin: 16; spacing: 10
+                        Rectangle { Layout.preferredWidth: 9; Layout.preferredHeight: 9; radius: 5; color: "#E24B58" }
+                        Text {
+                            text: "扫描失败 · " + systemBackend.wifiScanError
+                            color: "#A92F3B"; font.family: window.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold
+                            Layout.fillWidth: true; elide: Text.ElideRight
+                        }
+                        Text { text: "请重试"; color: "#B43A46"; font.family: window.uiFont; font.pixelSize: 14 }
+                    }
+                }
                 Flickable {
                     width: parent.width; height: 360; contentHeight: wifiList.height; clip: true
                     Column {
@@ -483,7 +498,9 @@ ApplicationWindow {
                             }
                         }
                         Text {
-                            visible: !systemBackend.wifiScanning && systemBackend.wifiNetworks.length <= (systemBackend.wifiConnected ? 1 : 0)
+                            visible: !systemBackend.wifiScanning
+                                     && systemBackend.wifiScanError.length === 0
+                                     && systemBackend.wifiNetworks.length <= (systemBackend.wifiConnected ? 1 : 0)
                             width: parent.width; horizontalAlignment: Text.AlignHCenter
                             text: "没有发现其他网络"
                             color: window.secondary; font.family: window.uiFont; font.pixelSize: 16

@@ -1,0 +1,6 @@
+[Meow OS Network Control]
+Identity=unix-user:radxa
+Action=org.freedesktop.NetworkManager.network-control;org.freedesktop.NetworkManager.enable-disable-wifi;org.freedesktop.NetworkManager.settings.modify.own;org.freedesktop.NetworkManager.settings.modify.system;org.freedesktop.NetworkManager.wifi.scan
+ResultAny=yes
+ResultInactive=yes
+ResultActive=yes

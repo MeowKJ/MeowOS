@@ -8,7 +8,7 @@ cd "$ROOT_DIR"
 qmake meow-os.pro -o Makefile
 make -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)"
 
-install -d -m 0755 /opt/meow-os/bin /opt/meow-os/assets/sounds /etc/meow-os /etc/systemd/system /etc/polkit-1/rules.d /etc/udev/rules.d
+install -d -m 0755 /opt/meow-os/bin /opt/meow-os/assets/sounds /etc/meow-os /etc/systemd/system /etc/polkit-1/rules.d /etc/polkit-1/localauthority/50-local.d /etc/udev/rules.d
 install -m 0755 meow-os /opt/meow-os/meow-os
 install -m 0644 assets/sounds/volume-meow.wav /opt/meow-os/assets/sounds/volume-meow.wav
 install -m 0755 scripts/meow-display-launcher /opt/meow-os/bin/meow-display-launcher
@@ -20,6 +20,7 @@ install -m 0644 config/display.conf /etc/meow-os/display.conf
 install -m 0644 config/eglfs-kms.json /opt/meow-os/eglfs-kms.json
 install -m 0644 config/asound.conf /etc/asound.conf
 install -m 0644 polkit/49-meow-os-network.rules /etc/polkit-1/rules.d/49-meow-os-network.rules
+install -m 0644 polkit/49-meow-os-network.pkla /etc/polkit-1/localauthority/50-local.d/49-meow-os-network.pkla
 install -m 0644 udev/99-meow-os-input.rules /etc/udev/rules.d/99-meow-os-input.rules
 printf 'NAME="Meow OS"\nVERSION="%s"\nID=meow-os\nPRETTY_NAME="Meow OS %s"\n' "$VERSION" "$VERSION" > /etc/meow-os-release
 
