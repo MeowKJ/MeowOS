@@ -9,9 +9,12 @@ export QT_QPA_PLATFORM="${MEOW_QPA_PLATFORM:-linuxfb:fb=/dev/fb0}"
 case "${QT_QPA_PLATFORM}" in
     linuxfb*) export QT_QUICK_BACKEND="${QT_QUICK_BACKEND:-software}" ;;
     eglfs*)
+        # GPU path: Panfrost/Mali via EGLFS. Never force software Quick backend.
         unset QT_QUICK_BACKEND
         export QT_QPA_EGLFS_KMS_CONFIG="${MEOW_EGLFS_KMS_CONFIG:-/opt/meow-os/eglfs-kms.json}"
         export QT_QPA_EGLFS_HIDECURSOR="${MEOW_EGLFS_HIDECURSOR:-1}"
+        export QSG_RENDER_LOOP="${QSG_RENDER_LOOP:-threaded}"
+        export QT_QPA_EGLFS_FORCE888="${QT_QPA_EGLFS_FORCE888:-1}"
         ;;
 esac
 

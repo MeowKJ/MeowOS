@@ -1,11 +1,13 @@
 #pragma once
 
+#include <QEvent>
 #include <QObject>
 #include <QFutureWatcher>
 #include <QProcess>
 #include <QTimer>
-#include <QVariantMap>
 #include <QVariantList>
+#include <QVariantMap>
+#include <QVector>
 
 class SystemBackend final : public QObject
 {
@@ -25,6 +27,10 @@ class SystemBackend final : public QObject
     Q_PROPERTY(int nvmePercent READ nvmePercent NOTIFY storageChanged)
     Q_PROPERTY(QString wifiName READ wifiName NOTIFY wifiChanged)
     Q_PROPERTY(bool wifiConnected READ wifiConnected NOTIFY wifiChanged)
+    Q_PROPERTY(QString wifiIpv4 READ wifiIpv4 NOTIFY wifiChanged)
+    Q_PROPERTY(QString wifiGateway READ wifiGateway NOTIFY wifiChanged)
+    Q_PROPERTY(QString wifiMac READ wifiMac NOTIFY wifiChanged)
+    Q_PROPERTY(QString wifiDevice READ wifiDevice NOTIFY wifiChanged)
     Q_PROPERTY(bool wifiScanning READ wifiScanning NOTIFY wifiChanged)
     Q_PROPERTY(bool wifiOperating READ wifiOperating NOTIFY wifiChanged)
     Q_PROPERTY(QString wifiOperation READ wifiOperation NOTIFY wifiChanged)
@@ -48,6 +54,12 @@ class SystemBackend final : public QObject
     Q_PROPERTY(bool audioAvailable READ audioAvailable NOTIFY audioChanged)
     Q_PROPERTY(int displayBrightnessPercent READ displayBrightnessPercent NOTIFY displayChanged)
     Q_PROPERTY(bool brightnessAvailable READ brightnessAvailable NOTIFY displayChanged)
+    Q_PROPERTY(int cpuTotal READ cpuTotal NOTIFY performanceChanged)
+    Q_PROPERTY(QVariantList cpuUsage READ cpuUsage NOTIFY performanceChanged)
+    Q_PROPERTY(int gpuUsage READ gpuUsage NOTIFY performanceChanged)
+    Q_PROPERTY(int memoryPercent READ memoryPercent NOTIFY performanceChanged)
+    Q_PROPERTY(QString memoryUsed READ memoryUsed NOTIFY performanceChanged)
+    Q_PROPERTY(QString memoryTotal READ memoryTotal NOTIFY performanceChanged)
     Q_PROPERTY(int displayRotation READ displayRotation CONSTANT)
 
 public:
@@ -68,6 +80,10 @@ public:
     int nvmePercent() const;
     QString wifiName() const;
     bool wifiConnected() const;
+    QString wifiIpv4() const;
+    QString wifiGateway() const;
+    QString wifiMac() const;
+    QString wifiDevice() const;
     bool wifiScanning() const;
     bool wifiOperating() const;
     QString wifiOperation() const;
@@ -91,10 +107,19 @@ public:
     bool audioAvailable() const;
     int displayBrightnessPercent() const;
     bool brightnessAvailable() const;
+    int cpuTotal() const;
+    QVariantList cpuUsage() const;
+    int gpuUsage() const;
+    int memoryPercent() const;
+    QString memoryUsed() const;
+    QString memoryTotal() const;
     int displayRotation() const;
 
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void refreshStatus();
+    Q_INVOKABLE void refreshPerformance();
+    Q_INVOKABLE void setActiveScope(const QString &scope);
+    Q_INVOKABLE qint64 idleMs() const;
     Q_INVOKABLE void scanWifi();
     Q_INVOKABLE void connectWifi(const QString &ssid, const QString &password);
     Q_INVOKABLE void forgetWifi(const QString &ssid);
@@ -110,7 +135,12 @@ signals:
     void powerChanged();
     void audioChanged();
     void displayChanged();
+    void performanceChanged();
+    void inputActivity();
     void operationMessage(const QString &message, bool success);
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
     void refreshSystem();
@@ -130,6 +160,10 @@ private:
     QString m_nvmeTotal;
     int m_nvmePercent = 0;
     QString m_wifiName;
+    QString m_wifiIpv4;
+    QString m_wifiGateway;
+    QString m_wifiMac;
+    QString m_wifiDevice;
     QString m_wifiOperation;
     QString m_wifiOperationSsid;
     QString m_wifiScanError;
@@ -153,6 +187,17 @@ private:
     QString m_backlightPath;
     int m_brightnessMax = 0;
     bool m_statusRefreshPending = false;
+    QString m_activeScope = QStringLiteral("home");
+    qint64 m_lastInputMs = 0;
+    int m_cpuTotal = -1;
+    QVariantList m_cpuUsage;
+    int m_gpuUsage = -1;
+    int m_memoryPercent = -1;
+    qint64 m_memoryUsedBytes = 0;
+    qint64 m_memoryTotalBytes = 0;
+    QVector<quint64> m_cpuPrevIdle;
+    QVector<quint64> m_cpuPrevTotal;
+    bool m_cpuHavePrev = false;
     QFutureWatcher<QVariantMap> m_statusWatcher;
     QFutureWatcher<QVariantMap> m_wifiScanWatcher;
     QFutureWatcher<QVariantMap> m_wifiOperationWatcher;

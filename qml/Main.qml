@@ -28,17 +28,23 @@ ApplicationWindow {
     property int tapCount: 0
     property string operationText: ""
     property bool operationSuccess: true
+    property bool screenDimmed: false
+    property int brightnessBeforeDim: -1
+    property int idleDimDelayMs: 90000
+    property string lastSettingsSection: ""
     property string initialSettingsSection: Qt.application.arguments.indexOf("--ethernet") >= 0
                                             ? "ethernet"
                                             : (Qt.application.arguments.indexOf("--wifi") >= 0
                                             || Qt.application.arguments.indexOf("--wifi-keyboard") >= 0
                                             || Qt.application.arguments.indexOf("--wifi-keyboard-symbols") >= 0
                                             ? "wifi"
+                                            : (Qt.application.arguments.indexOf("--performance") >= 0
+                                               ? "performance"
                                             : (Qt.application.arguments.indexOf("--sound") >= 0
                                                ? "sound"
                                             : (Qt.application.arguments.indexOf("--display") >= 0
                                                ? "display"
-                                               : (Qt.application.arguments.indexOf("--storage") >= 0 ? "storage" : "battery"))))
+                                               : (Qt.application.arguments.indexOf("--storage") >= 0 ? "storage" : "battery")))))
     property bool startInSettings: Qt.application.arguments.indexOf("--settings") >= 0
                                    || Qt.application.arguments.indexOf("--sound") >= 0
                                    || Qt.application.arguments.indexOf("--display") >= 0
@@ -46,6 +52,7 @@ ApplicationWindow {
                                    || Qt.application.arguments.indexOf("--wifi") >= 0
                                    || Qt.application.arguments.indexOf("--wifi-keyboard") >= 0
                                    || Qt.application.arguments.indexOf("--wifi-keyboard-symbols") >= 0
+                                   || Qt.application.arguments.indexOf("--performance") >= 0
                                    || Qt.application.arguments.indexOf("--ethernet") >= 0
 
     function updateClock() {
@@ -58,6 +65,30 @@ ApplicationWindow {
     function openApp(appId) {
         if (appId === "touch-test") stack.push(touchTestComponent)
         else if (appId === "settings") stack.push(settingsComponent)
+    }
+
+    function checkIdleState() {
+        if (screenDimmed) {
+            if (systemBackend.idleMs() < 3000) restoreBrightness()
+            return
+        }
+        if (systemBackend.idleMs() > idleDimDelayMs) dimScreen()
+    }
+
+    function dimScreen() {
+        if (screenDimmed || !systemBackend.brightnessAvailable) return
+        screenDimmed = true
+        brightnessBeforeDim = systemBackend.displayBrightnessPercent >= 0 ? systemBackend.displayBrightnessPercent : 30
+        systemBackend.setActiveScope("idle")
+        systemBackend.setDisplayBrightness(30)
+    }
+
+    function restoreBrightness() {
+        if (!screenDimmed) return
+        screenDimmed = false
+        if (brightnessBeforeDim > 0) systemBackend.setDisplayBrightness(brightnessBeforeDim)
+        brightnessBeforeDim = -1
+        systemBackend.setActiveScope(lastSettingsSection.length ? lastSettingsSection : "home")
     }
 
     function batteryStateText(status) {
@@ -83,6 +114,45 @@ ApplicationWindow {
         return "#FF3B30"
     }
 
+    function batteryPowerLabel() {
+        if (!systemBackend.batteryAvailable || systemBackend.batteryPowerW < 0) return "--"
+        var sign = systemBackend.batteryCharging ? "+" : (systemBackend.batteryCurrentMa < 0 || systemBackend.batteryStatus === "Discharging" ? "−" : "")
+        return sign + systemBackend.batteryPowerW.toFixed(1) + " W"
+    }
+
+    function batteryPowerColor() {
+        if (!systemBackend.batteryAvailable || systemBackend.batteryPowerW < 0) return "#8E8993"
+        var watts = systemBackend.batteryPowerW
+        if (systemBackend.batteryCharging) {
+            if (watts >= 8) return "#248A3D"
+            if (watts >= 3) return "#34C759"
+            return "#5AC8A0"
+        }
+        if (systemBackend.batteryStatus === "Full") return "#34C759"
+        if (watts >= 6) return "#FF3B30"
+        if (watts >= 3) return "#FF9F0A"
+        if (systemBackend.batteryPercent >= 0 && systemBackend.batteryPercent <= 20) return "#FF3B30"
+        if (systemBackend.batteryPercent >= 0 && systemBackend.batteryPercent <= 40) return "#FFCC00"
+        return "#6F6A74"
+    }
+
+    function batteryFillColor() {
+        if (systemBackend.batteryCharging) return batteryPowerColor()
+        if (systemBackend.batteryPercent >= 0 && systemBackend.batteryPercent <= 20) return "#FF3B30"
+        if (systemBackend.batteryPercent >= 0 && systemBackend.batteryPercent <= 40) return "#FFCC00"
+        if (systemBackend.batteryStatus === "Discharging" && systemBackend.batteryPowerW >= 6) return "#FF3B30"
+        if (systemBackend.batteryStatus === "Discharging" && systemBackend.batteryPowerW >= 3) return "#FF9F0A"
+        return "#4B4650"
+    }
+
+    function batteryOutlineColor() {
+        if (systemBackend.batteryCharging) return batteryPowerColor()
+        if (systemBackend.batteryPercent >= 0 && systemBackend.batteryPercent <= 20) return "#FF3B30"
+        if (systemBackend.batteryPercent >= 0 && systemBackend.batteryPercent <= 40) return "#FFCC00"
+        if (systemBackend.batteryStatus === "Discharging" && systemBackend.batteryPowerW >= 3) return batteryPowerColor()
+        return "#C7C7CC"
+    }
+
     function ethernetDuplexText(duplex) {
         if (duplex === "full") return "全双工"
         if (duplex === "half") return "半双工"
@@ -104,16 +174,19 @@ ApplicationWindow {
     }
 
     Timer {
-        interval: 5000
+        id: statusRefreshTimer
+        interval: window.screenDimmed ? 20000 : 5000
         running: true
         repeat: true
         onTriggered: systemBackend.refreshStatus()
     }
 
     Timer {
-        id: operationToastTimer
-        interval: 2600
-        onTriggered: operationToast.visible = false
+        id: idleWatch
+        interval: 5000
+        running: true
+        repeat: true
+        onTriggered: window.checkIdleState()
     }
 
     Connections {
@@ -121,8 +194,10 @@ ApplicationWindow {
         function onOperationMessage(message, success) {
             window.operationText = message
             window.operationSuccess = success
-            operationToast.visible = true
-            operationToastTimer.restart()
+            operationToast.open()
+        }
+        function onInputActivity() {
+            if (window.screenDimmed) window.restoreBrightness()
         }
     }
 
@@ -150,10 +225,24 @@ ApplicationWindow {
             id: stack
             anchors { left: parent.left; right: parent.right; top: parent.top; bottom: parent.bottom; topMargin: window.statusBarHeight }
             initialItem: window.startInSettings ? settingsComponent : homeComponent
-            pushEnter: Transition {}
-            pushExit: Transition {}
-            popEnter: Transition {}
-            popExit: Transition {}
+            pushEnter: Transition {
+                OpacityAnimator { from: 0.55; to: 1.0; duration: 180; easing.type: Easing.OutCubic }
+            }
+            pushExit: Transition {
+                OpacityAnimator { from: 1.0; to: 0.55; duration: 160; easing.type: Easing.InCubic }
+            }
+            popEnter: Transition {
+                OpacityAnimator { from: 0.55; to: 1.0; duration: 180; easing.type: Easing.OutCubic }
+            }
+            popExit: Transition {
+                OpacityAnimator { from: 1.0; to: 0.55; duration: 160; easing.type: Easing.InCubic }
+            }
+            onDepthChanged: {
+                if (depth === 1) {
+                    window.lastSettingsSection = ""
+                    systemBackend.setActiveScope("home")
+                }
+            }
         }
 
         MouseArea {
@@ -195,7 +284,9 @@ ApplicationWindow {
             id: operationToast
             z: 2200
             visible: false
-            anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 34 }
+            opacity: 0
+            property bool opened: false
+            anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 18 }
             width: toastText.implicitWidth + 56; height: 54; radius: 27
             color: window.operationSuccess ? "#2FAD72" : "#E64B55"
             Text {
@@ -204,6 +295,32 @@ ApplicationWindow {
                 text: window.operationText
                 color: "white"
                 font.family: window.uiFont; font.pixelSize: 17; font.weight: Font.DemiBold
+            }
+            Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+            Behavior on anchors.bottomMargin { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+            onOpacityChanged: if (!opened && opacity === 0) visible = false
+
+            function open() {
+                if (opened) {
+                    toastHideTimer.restart()
+                    return
+                }
+                visible = true
+                opened = true
+                opacity = 1
+                anchors.bottomMargin = 40
+                toastHideTimer.restart()
+            }
+            function hide() {
+                opened = false
+                opacity = 0
+                anchors.bottomMargin = 18
+                toastHideTimer.stop()
+            }
+            Timer {
+                id: toastHideTimer
+                interval: 2400
+                onTriggered: operationToast.hide()
             }
         }
     }
@@ -311,7 +428,16 @@ ApplicationWindow {
                                                 : section === "sound" ? 3
                                                 : section === "ch592" ? 4
                                                 : section === "display" ? 5
-                                                : section === "storage" ? 6 : 7
+                                                : section === "performance" ? 6
+                                                : section === "storage" ? 7 : 8
+            onSectionChanged: {
+                window.lastSettingsSection = section
+                systemBackend.setActiveScope(section)
+            }
+            Component.onCompleted: {
+                window.lastSettingsSection = section
+                systemBackend.setActiveScope(section)
+            }
 
             Rectangle {
                 id: settingsSidebar
@@ -334,8 +460,9 @@ ApplicationWindow {
                     SettingsNavRow { title: "有线网络"; icon: "qrc:/assets/icons/ethernet-port.svg"; accent: "#4A90E2"; selected: settingsPage.section === "ethernet"; onClicked: settingsPage.section = "ethernet" }
                     SettingsNavRow { title: "电池"; icon: "qrc:/assets/icons/battery-charging.svg"; accent: "#F1A244"; selected: settingsPage.section === "battery"; onClicked: settingsPage.section = "battery" }
                     SettingsNavRow { title: "声音"; icon: "qrc:/assets/icons/volume-2.svg"; accent: window.pink; selected: settingsPage.section === "sound"; onClicked: settingsPage.section = "sound" }
-                    SettingsNavRow { title: "隔空喵传"; icon: "qrc:/assets/icons/cpu.svg"; accent: window.mint; selected: settingsPage.section === "ch592"; onClicked: settingsPage.section = "ch592" }
+                    SettingsNavRow { title: "隔空喵传"; icon: "qrc:/assets/icons/zap-dark.svg"; accent: window.mint; selected: settingsPage.section === "ch592"; onClicked: settingsPage.section = "ch592" }
                     SettingsNavRow { title: "显示与触摸"; icon: "qrc:/assets/icons/monitor.svg"; accent: window.purple; selected: settingsPage.section === "display"; onClicked: settingsPage.section = "display" }
+                    SettingsNavRow { title: "性能"; icon: "qrc:/assets/icons/cpu.svg"; accent: "#4AC7C2"; selected: settingsPage.section === "performance"; onClicked: settingsPage.section = "performance" }
                     SettingsNavRow { title: "存储空间"; icon: "qrc:/assets/icons/hard-drive.svg"; accent: "#5E93E8"; selected: settingsPage.section === "storage"; onClicked: settingsPage.section = "storage" }
                     SettingsNavRow { title: "关于本机"; icon: "qrc:/assets/icons/info.svg"; accent: "#8B8490"; selected: settingsPage.section === "about"; onClicked: settingsPage.section = "about" }
                 }
@@ -347,14 +474,15 @@ ApplicationWindow {
                 StackLayout {
                     anchors.fill: parent
                     currentIndex: settingsPage.sectionIndex
-                    Loader { active: true; sourceComponent: wifiSettings }
-                    Loader { active: true; sourceComponent: ethernetSettings }
-                    Loader { active: true; sourceComponent: batterySettings }
-                    Loader { active: true; sourceComponent: soundSettings }
-                    Loader { active: true; sourceComponent: ch592Settings }
-                    Loader { active: true; sourceComponent: displaySettings }
-                    Loader { active: true; sourceComponent: storageSettings }
-                    Loader { active: true; sourceComponent: aboutSettings }
+                    Loader { active: settingsPage.section === "wifi"; asynchronous: true; sourceComponent: wifiSettings }
+                    Loader { active: settingsPage.section === "ethernet"; asynchronous: true; sourceComponent: ethernetSettings }
+                    Loader { active: settingsPage.section === "battery"; asynchronous: true; sourceComponent: batterySettings }
+                    Loader { active: settingsPage.section === "sound"; asynchronous: true; sourceComponent: soundSettings }
+                    Loader { active: settingsPage.section === "ch592"; asynchronous: true; sourceComponent: ch592Settings }
+                    Loader { active: settingsPage.section === "display"; asynchronous: true; sourceComponent: displaySettings }
+                    Loader { active: settingsPage.section === "performance"; asynchronous: true; sourceComponent: performanceSettings }
+                    Loader { active: settingsPage.section === "storage"; asynchronous: true; sourceComponent: storageSettings }
+                    Loader { active: settingsPage.section === "about"; asynchronous: true; sourceComponent: aboutSettings }
                 }
             }
         }
@@ -364,6 +492,7 @@ ApplicationWindow {
         id: wifiSettings
         Item {
             id: wifiPage
+            property string expandedSsid: ""
             property var currentNetwork: {
                 for (var i = 0; i < systemBackend.wifiNetworks.length; ++i) {
                     if (systemBackend.wifiNetworks[i].active) return systemBackend.wifiNetworks[i]
@@ -373,10 +502,12 @@ ApplicationWindow {
             function selectNetwork(network) {
                 if (systemBackend.wifiOperating) return
                 if (network.active) {
-                    networkActionDialog.openFor(network.ssid, true)
+                    wifiPage.expandedSsid = ""
                 } else if (network.saved || network.security === "开放") {
+                    wifiPage.expandedSsid = ""
                     systemBackend.connectWifi(network.ssid, "")
                 } else {
+                    wifiPage.expandedSsid = ""
                     passwordDialog.openFor(network.ssid)
                 }
             }
@@ -391,57 +522,146 @@ ApplicationWindow {
                     })
             }
 
-            Column {
-                anchors { left: parent.left; right: parent.right; top: parent.top; margins: 30 }
-                spacing: 16
+            Flickable {
+                anchors.fill: parent
+                contentHeight: wifiColumn.height + 60
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                Column {
+                    id: wifiColumn
+                    width: parent.width - 60
+                    x: 30; y: 30
+                    spacing: 16
                 RowLayout {
                     width: parent.width
                     ColumnLayout {
                         Layout.fillWidth: true
                         Text { text: "Wi-Fi"; color: window.ink; font.family: window.uiFont; font.pixelSize: 34; font.weight: Font.Bold }
-                        Text { text: systemBackend.wifiConnected ? "已连接到 " + systemBackend.wifiName : "未连接"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 18 }
+                        Text {
+                            text: systemBackend.wifiOperating
+                                  ? (systemBackend.wifiOperation === "connect"
+                                     ? "正在连接到 " + systemBackend.wifiOperationSsid + "…"
+                                     : "正在忘记 " + systemBackend.wifiOperationSsid + "…")
+                                  : (systemBackend.wifiConnected ? "已连接到 " + systemBackend.wifiName : "未连接")
+                            color: systemBackend.wifiOperating ? window.purple : window.secondary
+                            font.family: window.uiFont; font.pixelSize: 18
+                        }
                     }
                     Rectangle {
                         Layout.preferredWidth: 128; Layout.preferredHeight: 46; radius: 15
                         color: scanMouse.pressed ? "#6558D9" : window.purple
-                        opacity: systemBackend.wifiScanning ? 0.62 : 1
+                        opacity: systemBackend.wifiScanning || systemBackend.wifiOperating ? 0.62 : 1
                         Text { anchors.centerIn: parent; text: systemBackend.wifiScanning ? "正在扫描…" : "重新扫描"; color: "white"; font.family: window.uiFont; font.pixelSize: 16; font.weight: Font.DemiBold }
                         MouseArea { id: scanMouse; anchors.fill: parent; enabled: !systemBackend.wifiScanning && !systemBackend.wifiOperating; onClicked: systemBackend.scanWifi() }
                     }
                 }
 
                 Rectangle {
-                    width: parent.width; height: 112; radius: 20
+                    width: parent.width
+                    height: systemBackend.wifiConnected ? 274 : 112
+                    radius: 20
                     color: systemBackend.wifiConnected ? "#EAF8F1" : "#F4F2F6"
                     border.color: systemBackend.wifiConnected ? "#BCE8D1" : window.separator
-                    RowLayout {
-                        anchors.fill: parent; anchors.margins: 18; spacing: 16
-                        Rectangle {
-                            Layout.preferredWidth: 60; Layout.preferredHeight: 60; radius: 18
-                            color: systemBackend.wifiConnected ? window.wifiSignalColor(wifiPage.currentNetwork.signal || 0) : "#B8B4BC"
-                            Image { anchors.centerIn: parent; width: 34; height: 34; source: "qrc:/assets/icons/wifi.svg"; sourceSize.width: 68; sourceSize.height: 68 }
-                        }
-                        ColumnLayout {
-                            Layout.fillWidth: true; spacing: 3
-                            Text { text: systemBackend.wifiConnected ? systemBackend.wifiName : "Wi-Fi 未连接"; color: window.ink; font.family: window.uiFont; font.pixelSize: 22; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.fillWidth: true }
-                            Text {
-                                text: systemBackend.wifiConnected
-                                      ? ((wifiPage.currentNetwork.band || "")
-                                         + " · 信道 " + (wifiPage.currentNetwork.channel || "--")
-                                         + " · " + (wifiPage.currentNetwork.security || "--"))
-                                      : "选择下方网络进行连接"
-                                color: window.secondary; font.family: window.uiFont; font.pixelSize: 15
+
+                    MouseArea {
+                        anchors.fill: parent; enabled: systemBackend.wifiConnected && !systemBackend.wifiOperating
+                        onClicked: wifiPage.expandedSsid = ""
+                    }
+
+                    Column {
+                        anchors.fill: parent; anchors.margins: 18; spacing: 14
+                        RowLayout {
+                            width: parent.width; spacing: 16
+                            Rectangle {
+                                Layout.preferredWidth: 60; Layout.preferredHeight: 60; radius: 18
+                                color: systemBackend.wifiConnected ? window.wifiSignalColor(wifiPage.currentNetwork.signal || 0) : "#B8B4BC"
+                                Image { anchors.centerIn: parent; width: 34; height: 34; source: "qrc:/assets/icons/wifi.svg"; sourceSize.width: 68; sourceSize.height: 68 }
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true; spacing: 3
+                                Text { text: systemBackend.wifiConnected ? systemBackend.wifiName : "Wi-Fi 未连接"; color: window.ink; font.family: window.uiFont; font.pixelSize: 22; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.fillWidth: true }
+                                Text {
+                                    text: systemBackend.wifiConnected
+                                          ? ((wifiPage.currentNetwork.band || "")
+                                             + " · 信道 " + (wifiPage.currentNetwork.channel || "--")
+                                             + " · " + (wifiPage.currentNetwork.security || "--"))
+                                          : "选择下方网络进行连接"
+                                    color: window.secondary; font.family: window.uiFont; font.pixelSize: 15
+                                }
+                            }
+                            ColumnLayout {
+                                visible: systemBackend.wifiConnected; spacing: 2
+                                Text { text: (wifiPage.currentNetwork.signal || 0) + "%"; color: window.wifiSignalColor(wifiPage.currentNetwork.signal || 0); font.family: window.uiFont; font.pixelSize: 24; font.weight: Font.Bold; Layout.alignment: Qt.AlignRight }
+                                Text { text: wifiPage.currentNetwork.rate || ""; color: window.secondary; font.family: window.uiFont; font.pixelSize: 14; Layout.alignment: Qt.AlignRight }
                             }
                         }
-                        ColumnLayout {
-                            visible: systemBackend.wifiConnected; spacing: 2
-                            Text { text: (wifiPage.currentNetwork.signal || 0) + "%"; color: window.wifiSignalColor(wifiPage.currentNetwork.signal || 0); font.family: window.uiFont; font.pixelSize: 24; font.weight: Font.Bold; Layout.alignment: Qt.AlignRight }
-                            Text { text: wifiPage.currentNetwork.rate || ""; color: window.secondary; font.family: window.uiFont; font.pixelSize: 14; Layout.alignment: Qt.AlignRight }
+
+                        Rectangle {
+                            visible: systemBackend.wifiConnected
+                            width: parent.width; height: 1; color: "#BCE8D1"
                         }
-                    }
-                    MouseArea {
-                        anchors.fill: parent; enabled: systemBackend.wifiConnected
-                        onClicked: networkActionDialog.openFor(systemBackend.wifiName, true)
+
+                        RowLayout {
+                            visible: systemBackend.wifiConnected
+                            width: parent.width; height: 74; spacing: 18
+                            ColumnLayout {
+                                Layout.preferredWidth: 168; spacing: 5
+                                Text { text: "主机名"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 13 }
+                                Text {
+                                    text: systemBackend.hostname.length ? systemBackend.hostname : "--"
+                                    color: window.ink; font.family: window.uiFont; font.pixelSize: 17; font.weight: Font.DemiBold
+                                    elide: Text.ElideRight; Layout.fillWidth: true
+                                }
+                            }
+                            Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 48; color: "#BCE8D1" }
+                            ColumnLayout {
+                                Layout.preferredWidth: 188; spacing: 5
+                                Text { text: "IPv4 地址"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 13 }
+                                Text {
+                                    text: systemBackend.wifiIpv4.length ? systemBackend.wifiIpv4 : "正在获取…"
+                                    color: window.ink; font.family: window.uiFont; font.pixelSize: 17; font.weight: Font.DemiBold
+                                    elide: Text.ElideRight; Layout.fillWidth: true
+                                }
+                            }
+                            Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 48; color: "#BCE8D1" }
+                            ColumnLayout {
+                                Layout.fillWidth: true; spacing: 5
+                                Text { text: "网关 · " + (systemBackend.wifiDevice.length ? systemBackend.wifiDevice : "wlan0"); color: window.secondary; font.family: window.uiFont; font.pixelSize: 13 }
+                                Text {
+                                    text: systemBackend.wifiGateway.length ? systemBackend.wifiGateway : "--"
+                                    color: window.ink; font.family: window.uiFont; font.pixelSize: 16; font.weight: Font.DemiBold
+                                    elide: Text.ElideRight; Layout.fillWidth: true
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            visible: systemBackend.wifiConnected
+                            width: parent.width; height: 1; color: "#BCE8D1"
+                        }
+
+                        RowLayout {
+                            visible: systemBackend.wifiConnected
+                            width: parent.width; height: 46; spacing: 14
+                            Text {
+                                text: "已连接到 “" + systemBackend.wifiName + "”"
+                                color: "#3E8F6E"
+                                font.family: window.uiFont; font.pixelSize: 14
+                                Layout.fillWidth: true; elide: Text.ElideRight
+                            }
+                            Rectangle {
+                                Layout.preferredWidth: 128; Layout.preferredHeight: 40; radius: 12
+                                color: forgetMouse.pressed ? "#D93645" : "#EB4D5C"
+                                opacity: systemBackend.wifiOperating ? 0.6 : 1
+                                Text { anchors.centerIn: parent; text: "忘记此网络"; color: "white"; font.family: window.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold }
+                                MouseArea {
+                                    id: forgetMouse
+                                    anchors.fill: parent
+                                    enabled: !systemBackend.wifiOperating
+                                    onClicked: systemBackend.forgetWifi(systemBackend.wifiName)
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -462,50 +682,71 @@ ApplicationWindow {
                     }
                 }
                 Flickable {
-                    width: parent.width; height: 360; contentHeight: wifiList.height; clip: true
+                    width: parent.width; height: systemBackend.wifiConnected ? 250 : 360; contentHeight: wifiList.height; clip: true
                     Column {
                         id: wifiList; width: parent.width; spacing: 8
                         Repeater {
                             model: systemBackend.wifiNetworks
-                            delegate: Rectangle {
-                                id: networkCard
-                                property bool longPressHandled: false
+                            delegate: Column {
+                                id: networkEntry
+                                width: parent.width
+                                spacing: 8
                                 visible: !modelData.active
-                                width: parent.width; height: visible ? 82 : 0; radius: 18
-                                color: networkMouse.pressed ? "#EEEAFE" : "#F9F9FB"
-                                border.color: window.separator; border.width: 1
-                                RowLayout {
-                                    anchors.fill: parent; anchors.margins: 13; spacing: 13
-                                    Rectangle {
-                                        Layout.preferredWidth: 48; Layout.preferredHeight: 48; radius: 14
-                                        color: window.wifiSignalColor(modelData.signal)
-                                        Image { anchors.centerIn: parent; width: 27; height: 27; source: "qrc:/assets/icons/wifi.svg"; sourceSize.width: 54; sourceSize.height: 54 }
-                                    }
-                                    ColumnLayout {
-                                        Layout.fillWidth: true; spacing: 2
-                                        RowLayout {
-                                            Layout.fillWidth: true
-                                            Text { text: modelData.ssid; color: window.ink; font.family: window.uiFont; font.pixelSize: 19; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.fillWidth: true }
-                                            Text { visible: modelData.saved; text: "已保存 · 长按管理"; color: window.purple; font.family: window.uiFont; font.pixelSize: 13 }
+                                Rectangle {
+                                    id: networkCard
+                                    width: parent.width; height: 82; radius: 18
+                                    color: networkMouse.pressed ? "#EEEAFE" : "#F9F9FB"
+                                    border.color: window.separator; border.width: 1
+                                    opacity: systemBackend.wifiOperating ? 0.72 : 1
+                                    RowLayout {
+                                        anchors.fill: parent; anchors.margins: 13; spacing: 13
+                                        Rectangle {
+                                            Layout.preferredWidth: 48; Layout.preferredHeight: 48; radius: 14
+                                            color: window.wifiSignalColor(modelData.signal)
+                                            Image { anchors.centerIn: parent; width: 27; height: 27; source: "qrc:/assets/icons/wifi.svg"; sourceSize.width: 54; sourceSize.height: 54 }
                                         }
-                                        Text { text: modelData.band + " · 信道 " + modelData.channel + " · " + modelData.rate; color: window.secondary; font.family: window.uiFont; font.pixelSize: 14 }
+                                        ColumnLayout {
+                                            Layout.fillWidth: true; spacing: 2
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Text { text: modelData.ssid; color: window.ink; font.family: window.uiFont; font.pixelSize: 19; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.fillWidth: true }
+                                                Text {
+                                                    visible: systemBackend.wifiOperating && systemBackend.wifiOperationSsid === modelData.ssid
+                                                    text: systemBackend.wifiOperation === "connect" ? "连接中…" : "处理中…"
+                                                    color: window.purple; font.family: window.uiFont; font.pixelSize: 13; font.weight: Font.DemiBold
+                                                }
+                                                Rectangle {
+                                                    visible: modelData.saved && !(systemBackend.wifiOperating && systemBackend.wifiOperationSsid === modelData.ssid)
+                                                    Layout.preferredWidth: 54; Layout.preferredHeight: 30; radius: 10
+                                                    color: manageMouse.pressed ? "#DED8FF" : "#EEEAFE"
+                                                    Text { anchors.centerIn: parent; text: "管理"; color: "#6555D5"; font.family: window.uiFont; font.pixelSize: 13; font.weight: Font.DemiBold }
+                                                    MouseArea {
+                                                        id: manageMouse
+                                                        anchors.fill: parent
+                                                        onClicked: wifiPage.expandedSsid = (wifiPage.expandedSsid === modelData.ssid ? "" : modelData.ssid)
+                                                    }
+                                                }
+                                            }
+                                            Text { text: modelData.band + " · 信道 " + modelData.channel + " · " + modelData.rate; color: window.secondary; font.family: window.uiFont; font.pixelSize: 14 }
+                                        }
+                                        ColumnLayout {
+                                            spacing: 2
+                                            Text { text: modelData.signal + "%"; color: window.wifiSignalColor(modelData.signal); font.family: window.uiFont; font.pixelSize: 18; font.weight: Font.Bold; Layout.alignment: Qt.AlignRight }
+                                            Text { text: modelData.security; color: window.secondary; font.family: window.uiFont; font.pixelSize: 13; Layout.alignment: Qt.AlignRight }
+                                        }
                                     }
-                                    ColumnLayout {
-                                        spacing: 2
-                                        Text { text: modelData.signal + "%"; color: window.wifiSignalColor(modelData.signal); font.family: window.uiFont; font.pixelSize: 18; font.weight: Font.Bold; Layout.alignment: Qt.AlignRight }
-                                        Text { text: modelData.security; color: window.secondary; font.family: window.uiFont; font.pixelSize: 13; Layout.alignment: Qt.AlignRight }
+                                    MouseArea {
+                                        id: networkMouse; anchors.fill: parent; enabled: !systemBackend.wifiOperating
+                                        onClicked: wifiPage.selectNetwork(modelData)
                                     }
                                 }
-                                MouseArea {
-                                    id: networkMouse; anchors.fill: parent; enabled: !systemBackend.wifiOperating
-                                    onPressed: networkCard.longPressHandled = false
-                                    onPressAndHold: {
-                                        if (modelData.saved) {
-                                            networkCard.longPressHandled = true
-                                            networkActionDialog.openFor(modelData.ssid, false)
-                                        }
-                                    }
-                                    onClicked: if (!networkCard.longPressHandled) wifiPage.selectNetwork(modelData)
+                                WifiManagePanel {
+                                    id: managePanel
+                                    width: parent.width
+                                    expanded: wifiPage.expandedSsid === modelData.ssid
+                                    onForget: systemBackend.forgetWifi(modelData.ssid)
+                                    onReenter: { wifiPage.expandedSsid = ""; passwordDialog.openFor(modelData.ssid) }
+                                    onConnect: { wifiPage.expandedSsid = ""; systemBackend.connectWifi(modelData.ssid, "") }
                                 }
                             }
                         }
@@ -519,6 +760,7 @@ ApplicationWindow {
                             topPadding: 24
                         }
                     }
+                }
                 }
             }
         }
@@ -615,12 +857,7 @@ ApplicationWindow {
                         x: 5; y: 7; width: 214; height: 104; radius: 22
                         color: "#E5E5EA"
                         border.width: 5
-                        border.color: systemBackend.batteryCharging
-                                      ? "#34C759"
-                                      : (systemBackend.batteryPercent >= 0 && systemBackend.batteryPercent <= 20
-                                         ? "#FF3B30"
-                                         : (systemBackend.batteryPercent >= 0 && systemBackend.batteryPercent <= 40
-                                            ? "#FFCC00" : "#C7C7CC"))
+                        border.color: window.batteryOutlineColor()
                         clip: true
                         Rectangle {
                             id: detailBatteryFill
@@ -628,12 +865,7 @@ ApplicationWindow {
                             width: systemBackend.batteryPercent >= 0
                                    ? (detailBatteryBody.width - 16) * systemBackend.batteryPercent / 100 : 0
                             radius: 14
-                            color: systemBackend.batteryCharging
-                                   ? "#34C759"
-                                   : (systemBackend.batteryPercent >= 0 && systemBackend.batteryPercent <= 20
-                                      ? "#FF3B30"
-                                      : (systemBackend.batteryPercent >= 0 && systemBackend.batteryPercent <= 40
-                                         ? "#FFCC00" : "#4B4650"))
+                            color: window.batteryFillColor()
                         }
                         Row {
                             id: detailBatteryLabelBase
@@ -683,19 +915,29 @@ ApplicationWindow {
                     }
                     Rectangle {
                         x: 223; y: 44; width: 9; height: 30; radius: 4
-                        color: systemBackend.batteryCharging ? "#34C759" : "#C7C7CC"
+                        color: window.batteryOutlineColor()
                     }
                 }
                 ColumnLayout {
                     Layout.fillWidth: true; spacing: 7
                     Text { text: window.batteryStateText(systemBackend.batteryStatus); color: window.ink; font.family: window.uiFont; font.pixelSize: 27; font.weight: Font.DemiBold }
-                    Text { text: systemBackend.batteryTemperatureC > -100 ? "电池温度  " + systemBackend.batteryTemperatureC.toFixed(1) + " °C" : "电池温度  --"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 18 }
+                    Text {
+                        text: window.batteryPowerLabel() + (systemBackend.batteryTemperatureC > -100
+                              ? "  ·  " + systemBackend.batteryTemperatureC.toFixed(1) + " °C" : "")
+                        color: window.batteryPowerColor()
+                        font.family: window.uiFont; font.pixelSize: 18; font.weight: Font.DemiBold
+                    }
                 }
             }
             IosGroup {
                 width: parent.width
                 IosInfoRow { height: 54; label: "状态"; value: window.batteryStateText(systemBackend.batteryStatus) }
-                IosInfoRow { height: 54; label: "实时功率"; value: systemBackend.batteryPowerW >= 0 ? systemBackend.batteryPowerW.toFixed(2) + " W" : "--" }
+                IosInfoRow {
+                    height: 54; label: "实时功率"
+                    value: systemBackend.batteryPowerW >= 0 ? window.batteryPowerLabel() : "--"
+                    valueColor: window.batteryPowerColor()
+                    emphasize: true
+                }
                 IosInfoRow { height: 54; label: "电压"; value: systemBackend.batteryVoltageMv >= 0 ? (systemBackend.batteryVoltageMv / 1000).toFixed(3) + " V" : "--" }
                 IosInfoRow { height: 54; label: "电流"; value: systemBackend.batteryAvailable ? systemBackend.batteryCurrentMa + " mA" : "--" }
                 IosInfoRow { height: 54; label: "电池温度"; value: systemBackend.batteryTemperatureC > -100 ? systemBackend.batteryTemperatureC.toFixed(1) + " °C" : "--" }
@@ -710,20 +952,41 @@ ApplicationWindow {
         SettingsPageBody {
             title: "声音"
             subtitle: systemBackend.audioAvailable ? "内置扬声器已就绪" : "音频输出尚未就绪"
+            Rectangle {
+                width: parent.width; height: 96; radius: 20
+                color: "#FFF1F6"; border.color: "#FFD0DF"; border.width: 1
+                RowLayout {
+                    anchors.fill: parent; anchors.margins: 18; spacing: 16
+                    Rectangle {
+                        Layout.preferredWidth: 58; Layout.preferredHeight: 58; radius: 17
+                        color: window.pink
+                        Image { anchors.centerIn: parent; width: 32; height: 32; source: "qrc:/assets/icons/volume-2.svg"; sourceSize.width: 64; sourceSize.height: 64 }
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true; spacing: 3
+                        Text { text: "内置扬声器"; color: window.ink; font.family: window.uiFont; font.pixelSize: 21; font.weight: Font.DemiBold }
+                        Text { text: systemBackend.audioAvailable ? "NS4168 · 单声道输出" : "声卡驱动未就绪"; color: "#B35A78"; font.family: window.uiFont; font.pixelSize: 15 }
+                    }
+                    Text {
+                        text: systemBackend.volumePercent >= 0 ? systemBackend.volumePercent + "%" : "--"
+                        color: window.pink; font.family: window.uiFont; font.pixelSize: 26; font.weight: Font.Bold
+                    }
+                }
+            }
             IosGroup {
                 width: parent.width
                 IosInfoRow { label: "输出设备"; value: systemBackend.audioAvailable ? "内置扬声器" : "--" }
-                IosInfoRow { label: "主音量"; value: systemBackend.volumePercent >= 0 ? systemBackend.volumePercent + "%" : "--"; last: true }
+                IosInfoRow { label: "主音量"; value: systemBackend.volumePercent >= 0 ? systemBackend.volumePercent + "%" : "--"; valueColor: window.pink; emphasize: true; last: true }
             }
             Rectangle {
                 width: parent.width; height: 132; radius: 18
-                color: "#F9F9FB"; border.color: window.separator; border.width: 1
+                color: "#FFF7FA"; border.color: "#F3D5E1"; border.width: 1
                 Column {
                     anchors.fill: parent; anchors.margins: 18; spacing: 14
                     RowLayout {
                         width: parent.width
                         Text { text: "音量"; color: window.ink; font.family: window.uiFont; font.pixelSize: 19; font.weight: Font.DemiBold; Layout.fillWidth: true }
-                        Text { text: systemBackend.volumePercent >= 0 ? systemBackend.volumePercent + "%" : "--"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 18; font.weight: Font.DemiBold }
+                        Text { text: systemBackend.volumePercent >= 0 ? systemBackend.volumePercent + "%" : "--"; color: window.pink; font.family: window.uiFont; font.pixelSize: 18; font.weight: Font.DemiBold }
                     }
                     RowLayout {
                         width: parent.width; spacing: 15
@@ -740,17 +1003,17 @@ ApplicationWindow {
                                 x: volumeSlider.leftPadding
                                 y: volumeSlider.topPadding + volumeSlider.availableHeight / 2 - height / 2
                                 width: volumeSlider.availableWidth; height: 7; radius: 4
-                                color: "#DEDCE2"
+                                color: "#F0D5DF"
                                 Rectangle {
                                     width: volumeSlider.visualPosition * parent.width; height: parent.height; radius: parent.radius
-                                    color: window.purple
+                                    color: window.pink
                                 }
                             }
                             handle: Rectangle {
                                 x: volumeSlider.leftPadding + volumeSlider.visualPosition * (volumeSlider.availableWidth - width)
                                 y: volumeSlider.topPadding + volumeSlider.availableHeight / 2 - height / 2
                                 width: 26; height: 26; radius: 13
-                                color: "white"; border.color: "#D2CFD7"; border.width: 1
+                                color: "white"; border.color: "#E7B8C8"; border.width: 1
                             }
                         }
                     }
@@ -764,9 +1027,31 @@ ApplicationWindow {
         SettingsPageBody {
             title: "隔空喵传"
             subtitle: "USB IAP 服务待接入"
+            Rectangle {
+                width: parent.width; height: 108; radius: 20
+                color: "#EAF8F2"; border.color: "#BFE8D4"; border.width: 1
+                RowLayout {
+                    anchors.fill: parent; anchors.margins: 18; spacing: 16
+                    Rectangle {
+                        Layout.preferredWidth: 58; Layout.preferredHeight: 58; radius: 17
+                        color: window.mint
+                        Image { anchors.centerIn: parent; width: 32; height: 32; source: "qrc:/assets/icons/cpu.svg"; sourceSize.width: 64; sourceSize.height: 64 }
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true; spacing: 4
+                        Text { text: "CH592F"; color: window.ink; font.family: window.uiFont; font.pixelSize: 22; font.weight: Font.DemiBold }
+                        Text { text: "常驻 USB IAP · 正常升级无需按 BOOT"; color: "#3E8F6E"; font.family: window.uiFont; font.pixelSize: 15 }
+                    }
+                    Rectangle {
+                        Layout.preferredWidth: 88; Layout.preferredHeight: 36; radius: 13
+                        color: "#D8F3E6"
+                        Text { anchors.centerIn: parent; text: "待接入"; color: "#2F8A62"; font.family: window.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold }
+                    }
+                }
+            }
             IosGroup {
                 width: parent.width
-                IosInfoRow { label: "正常更新"; value: "无需按 BOOT" }
+                IosInfoRow { label: "正常更新"; value: "无需按 BOOT"; valueColor: window.mint; emphasize: true }
                 IosInfoRow { label: "首次烧录 / 救砖"; value: "物理 BOOT 或 SWD"; last: true }
             }
         }
@@ -776,23 +1061,37 @@ ApplicationWindow {
         id: displaySettings
         SettingsPageBody {
             title: "显示与触摸"
-            subtitle: "WX101 · JD9366TC"
-            IosGroup {
-                width: parent.width
-                IosInfoRow { label: "屏幕亮度"; value: systemBackend.brightnessAvailable ? systemBackend.displayBrightnessPercent + "%" : "--" }
-                IosInfoRow { label: "逻辑分辨率"; value: "1280 × 800" }
-                IosInfoRow { label: "物理分辨率"; value: "800 × 1280" }
-                IosInfoRow { label: "输出方向"; value: "逆时针 90°"; last: true }
+            subtitle: "屏幕与亮度"
+            Rectangle {
+                width: parent.width; height: 96; radius: 20
+                color: "#F3F0FF"; border.color: "#D9D2FA"; border.width: 1
+                RowLayout {
+                    anchors.fill: parent; anchors.margins: 18; spacing: 16
+                    Rectangle {
+                        Layout.preferredWidth: 58; Layout.preferredHeight: 58; radius: 17
+                        color: window.purple
+                        Image { anchors.centerIn: parent; width: 32; height: 32; source: "qrc:/assets/icons/monitor.svg"; sourceSize.width: 64; sourceSize.height: 64 }
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true; spacing: 3
+                        Text { text: "屏幕"; color: window.ink; font.family: window.uiFont; font.pixelSize: 21; font.weight: Font.DemiBold }
+                        Text { text: "1280 × 800"; color: "#6A5CC4"; font.family: window.uiFont; font.pixelSize: 15 }
+                    }
+                    Text {
+                        text: systemBackend.brightnessAvailable ? systemBackend.displayBrightnessPercent + "%" : "--"
+                        color: window.purple; font.family: window.uiFont; font.pixelSize: 26; font.weight: Font.Bold
+                    }
+                }
             }
             Rectangle {
                 width: parent.width; height: 132; radius: 18
-                color: "#F9F9FB"; border.color: window.separator; border.width: 1
+                color: "#F7F5FF"; border.color: "#DDD7F5"; border.width: 1
                 Column {
                     anchors.fill: parent; anchors.margins: 18; spacing: 14
                     RowLayout {
                         width: parent.width
                         Text { text: "亮度"; color: window.ink; font.family: window.uiFont; font.pixelSize: 19; font.weight: Font.DemiBold; Layout.fillWidth: true }
-                        Text { text: systemBackend.brightnessAvailable ? systemBackend.displayBrightnessPercent + "%" : "--"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 18; font.weight: Font.DemiBold }
+                        Text { text: systemBackend.brightnessAvailable ? systemBackend.displayBrightnessPercent + "%" : "--"; color: window.purple; font.family: window.uiFont; font.pixelSize: 18; font.weight: Font.DemiBold }
                     }
                     RowLayout {
                         width: parent.width; spacing: 15
@@ -808,7 +1107,7 @@ ApplicationWindow {
                                 x: brightnessSlider.leftPadding
                                 y: brightnessSlider.topPadding + brightnessSlider.availableHeight / 2 - height / 2
                                 width: brightnessSlider.availableWidth; height: 7; radius: 4
-                                color: "#DEDCE2"
+                                color: "#DDD8EF"
                                 Rectangle {
                                     width: brightnessSlider.visualPosition * parent.width; height: parent.height; radius: parent.radius
                                     color: window.purple
@@ -818,7 +1117,47 @@ ApplicationWindow {
                                 x: brightnessSlider.leftPadding + brightnessSlider.visualPosition * (brightnessSlider.availableWidth - width)
                                 y: brightnessSlider.topPadding + brightnessSlider.availableHeight / 2 - height / 2
                                 width: 26; height: 26; radius: 13
-                                color: "white"; border.color: "#D2CFD7"; border.width: 1
+                                color: "white"; border.color: "#C9C1E8"; border.width: 1
+                            }
+                        }
+                    }
+                }
+            }
+            Rectangle {
+                width: parent.width; height: 132; radius: 18
+                color: "#F7F5FF"; border.color: "#DDD7F5"; border.width: 1
+                Column {
+                    anchors.fill: parent; anchors.margins: 18; spacing: 14
+                    RowLayout {
+                        width: parent.width
+                        Text { text: "亮度"; color: window.ink; font.family: window.uiFont; font.pixelSize: 19; font.weight: Font.DemiBold; Layout.fillWidth: true }
+                        Text { text: systemBackend.brightnessAvailable ? systemBackend.displayBrightnessPercent + "%" : "--"; color: window.purple; font.family: window.uiFont; font.pixelSize: 18; font.weight: Font.DemiBold }
+                    }
+                    RowLayout {
+                        width: parent.width; spacing: 15
+                        Image { Layout.preferredWidth: 25; Layout.preferredHeight: 25; source: "qrc:/assets/icons/sun.svg"; sourceSize.width: 50; sourceSize.height: 50; opacity: brightnessSlider.enabled ? 1 : 0.3 }
+                        Slider {
+                            id: brightnessSlider
+                            Layout.fillWidth: true; Layout.preferredHeight: 34
+                            from: 10; to: 100; stepSize: 1; live: true
+                            enabled: systemBackend.brightnessAvailable
+                            value: systemBackend.displayBrightnessPercent >= 0 ? systemBackend.displayBrightnessPercent : 10
+                            onMoved: systemBackend.setDisplayBrightness(Math.round(value))
+                            background: Rectangle {
+                                x: brightnessSlider.leftPadding
+                                y: brightnessSlider.topPadding + brightnessSlider.availableHeight / 2 - height / 2
+                                width: brightnessSlider.availableWidth; height: 7; radius: 4
+                                color: "#DDD8EF"
+                                Rectangle {
+                                    width: brightnessSlider.visualPosition * parent.width; height: parent.height; radius: parent.radius
+                                    color: window.purple
+                                }
+                            }
+                            handle: Rectangle {
+                                x: brightnessSlider.leftPadding + brightnessSlider.visualPosition * (brightnessSlider.availableWidth - width)
+                                y: brightnessSlider.topPadding + brightnessSlider.availableHeight / 2 - height / 2
+                                width: 26; height: 26; radius: 13
+                                color: "white"; border.color: "#C9C1E8"; border.width: 1
                             }
                         }
                     }
@@ -863,18 +1202,23 @@ ApplicationWindow {
         SettingsPageBody {
             title: "关于本机"
             subtitle: "Radxa Cubie A5E"
-            RowLayout {
-                width: parent.width; spacing: 22
-                Image { Layout.preferredWidth: 112; Layout.preferredHeight: 112; source: "qrc:/assets/meowkj-avatar-circle.png"; fillMode: Image.PreserveAspectFit; smooth: true }
-                ColumnLayout {
-                    Layout.fillWidth: true; spacing: 4
-                    Text { text: "Meow OS"; color: window.ink; font.family: window.uiFont; font.pixelSize: 30; font.weight: Font.Bold }
-                    Text { text: "为这台设备打造"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 17 }
+            Rectangle {
+                width: parent.width; height: 138; radius: 22
+                color: "#FFF7FA"; border.color: "#F3D5E1"; border.width: 1
+                RowLayout {
+                    anchors.fill: parent; anchors.margins: 20; spacing: 22
+                    Image { Layout.preferredWidth: 96; Layout.preferredHeight: 96; source: "qrc:/assets/meowkj-avatar-circle.png"; fillMode: Image.PreserveAspectFit; smooth: true }
+                    ColumnLayout {
+                        Layout.fillWidth: true; spacing: 4
+                        Text { text: "Meow OS"; color: window.ink; font.family: window.uiFont; font.pixelSize: 30; font.weight: Font.Bold }
+                        Text { text: "为这台设备打造"; color: "#B35A78"; font.family: window.uiFont; font.pixelSize: 17 }
+                        Text { text: systemBackend.hostname.length ? systemBackend.hostname : "radxa"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 15 }
+                    }
                 }
             }
             IosGroup {
                 width: parent.width
-                IosInfoRow { label: "系统版本"; value: "Meow OS " + systemBackend.version }
+                IosInfoRow { label: "系统版本"; value: "Meow OS " + systemBackend.version; valueColor: window.pink; emphasize: true }
                 IosInfoRow { label: "主机名"; value: systemBackend.hostname }
                 IosInfoRow { label: "Linux 内核"; value: systemBackend.kernel; last: true }
             }
@@ -887,6 +1231,7 @@ ApplicationWindow {
         property bool shift: false
         property int keyboardPage: 0 // 0 letters, 1 numbers, 2 extended symbols
         property bool showPassword: false
+        property bool opened: false
         function openFor(networkName) {
             ssid = networkName
             shift = false
@@ -902,8 +1247,23 @@ ApplicationWindow {
         function backspace() {
             if (wifiPassword.text.length > 0) wifiPassword.text = wifiPassword.text.slice(0, -1)
         }
-        function open() { visible = true }
-        function close() { visible = false }
+        function open() {
+            visible = true
+            opened = true
+            dialogContent.opacity = 1
+            dialogContent.scale = 1
+            keyboardShell.opacity = 1
+            keyboardShell.y = 0
+            wifiPassword.forceActiveFocus()
+        }
+        function close() {
+            opened = false
+            dialogContent.opacity = 0
+            dialogContent.scale = 0.96
+            keyboardShell.opacity = 0
+            keyboardShell.y = keyboardShell.height
+            closeAnimation.restart()
+        }
         function submit() {
             if (wifiPassword.text.length === 0) return
             systemBackend.connectWifi(ssid, wifiPassword.text)
@@ -911,11 +1271,15 @@ ApplicationWindow {
             wifiPassword.text = ""
         }
         parent: scene; anchors.fill: parent; z: 2100; visible: false
-        Rectangle { anchors.fill: parent; color: "#590B0A0D"; MouseArea { anchors.fill: parent } }
+        Rectangle { anchors.fill: parent; color: opened ? "#590B0A0D" : "#00000000"; opacity: opened ? 1 : 0; Behavior on opacity { NumberAnimation { duration: 180 } }; MouseArea { anchors.fill: parent; onClicked: passwordDialog.close() } }
         Rectangle {
+            id: dialogContent
             width: 840; height: 154
             anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: 78 }
             radius: 24; color: "#FCFBFD"; border.color: "#DEDCE2"; border.width: 1
+            opacity: 0; scale: 0.96; layer.enabled: opened || opacity > 0.01
+            Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+            Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
             Column {
                 anchors.fill: parent; anchors.margins: 22; spacing: 13
                 RowLayout {
@@ -970,12 +1334,17 @@ ApplicationWindow {
         }
 
         Rectangle {
-            id: ipadKeyboard
+            id: keyboardShell
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
             height: 320; color: "#CED2D9"
             border.color: "#B9BEC7"; border.width: 1
-
+            opacity: 0
+            y: height
+            layer.enabled: passwordDialog.opened || opacity > 0.01
+            Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+            Behavior on y { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
             Column {
+                id: keyboardContent
                 anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: 18; rightMargin: 18 }
                 spacing: 9
                 Row {
@@ -1057,110 +1426,144 @@ ApplicationWindow {
                 }
             }
         }
+
+        Timer {
+            id: closeAnimation
+            interval: 220
+            onTriggered: passwordDialog.visible = false
+        }
     }
 
-    Item {
-        id: networkActionDialog
-        property string ssid: ""
-        property bool activeNetwork: false
-        function openFor(networkName, active) {
-            ssid = networkName
-            activeNetwork = active
-            open()
+    component ManageButton: Rectangle {
+        property string label: ""
+        property color baseColor: window.purple
+        signal clicked()
+        width: 140; height: 44; radius: 12
+        color: manageBtnMouse.pressed ? Qt.darker(baseColor, 1.15) : baseColor
+        Text { anchors.centerIn: parent; text: label; color: "white"; font.family: window.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold }
+        MouseArea { id: manageBtnMouse; anchors.fill: parent; onClicked: parent.clicked() }
+    }
+
+    component WifiManagePanel: Rectangle {
+        id: wifiPanelRoot
+        property bool expanded: false
+        signal forget()
+        signal reenter()
+        signal connect()
+        width: parent ? parent.width : 0
+        height: 0
+        clip: true
+        radius: 18
+        color: "#F5F3FF"
+        border.color: "#D8D0F5"; border.width: 1
+        Column {
+            id: panelContent
+            anchors { left: parent.left; right: parent.right; top: parent.top }
+            spacing: 12
+            Text { text: "已保存此网络的连接信息，密码变化时请重新输入"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 14; wrapMode: Text.WordWrap; width: parent.width; leftPadding: 16; rightPadding: 16; topPadding: 14 }
+            Row {
+                anchors.horizontalCenter: parent.horizontalCenter; spacing: 10
+                ManageButton { label: "重新输入密码"; baseColor: window.purple; onClicked: reenter() }
+                ManageButton { label: "连接"; baseColor: window.mint; onClicked: connect() }
+                ManageButton { label: "忘记网络"; baseColor: "#EB4D5C"; onClicked: forget() }
+            }
         }
-        function open() { visible = true }
-        function close() { visible = false }
-        parent: scene; anchors.fill: parent; z: 2100; visible: false
-        Rectangle { anchors.fill: parent; color: "#66000000"; MouseArea { anchors.fill: parent; onClicked: networkActionDialog.close() } }
-        Rectangle {
-            width: networkActionDialog.activeNetwork ? 520 : 690
-            height: networkActionDialog.activeNetwork ? 250 : 270
-            anchors.centerIn: parent
-            radius: 26; color: "white"; border.color: window.separator; border.width: 1
+        states: [
+            State { name: "collapsed"; when: !wifiPanelRoot.expanded; PropertyChanges { target: wifiPanelRoot; height: 0; opacity: 0 } },
+            State { name: "expanded"; when: wifiPanelRoot.expanded; PropertyChanges { target: wifiPanelRoot; height: panelContent.height + 28; opacity: 1 } }
+        ]
+        transitions: Transition { NumberAnimation { properties: "height,opacity"; duration: 240; easing.type: Easing.OutCubic } }
+        visible: expanded || height > 1
+        enabled: expanded
+        layer.enabled: expanded || opacity > 0.01
+    }
+
+    component PerfTile: Rectangle {
+        property string title: ""
+        property string value: "--"
+        property string subtext: ""
+        property color accent: window.purple
+        property int percent: -1
+        Layout.fillWidth: true
+        height: 150; radius: 20
+        color: "#F9F9FB"; border.color: window.separator; border.width: 1
+        Column {
+            anchors.fill: parent; anchors.margins: 18; spacing: 8
+            Text { text: title; color: window.secondary; font.family: window.uiFont; font.pixelSize: 15 }
+            Text { text: value; color: window.ink; font.family: window.uiFont; font.pixelSize: 40; font.weight: Font.Bold }
+            Rectangle {
+                width: parent.width; height: 8; radius: 4; color: "#E7E5EA"
+                Rectangle { width: Math.max(percent, 0) / 100 * parent.width; height: parent.height; radius: 4; color: accent }
+            }
+            Text { text: subtext; color: window.secondary; font.family: window.uiFont; font.pixelSize: 13; elide: Text.ElideRight; width: parent.width }
+        }
+    }
+
+    Component {
+        id: performanceSettings
+        SettingsPageBody {
+            title: "性能"
+            subtitle: "处理器 · 图形 · 内存 实时占用"
+            RowLayout {
+                width: parent.width; spacing: 14
+                PerfTile { title: "CPU"; value: systemBackend.cpuTotal >= 0 ? systemBackend.cpuTotal + "%" : "--"; accent: window.purple; percent: systemBackend.cpuTotal }
+                PerfTile { title: "GPU"; value: systemBackend.gpuUsage >= 0 ? systemBackend.gpuUsage + "%" : "--"; accent: window.mint; percent: systemBackend.gpuUsage }
+                PerfTile { title: "内存"; value: systemBackend.memoryPercent >= 0 ? systemBackend.memoryPercent + "%" : "--"; accent: "#4AC7C2"; percent: systemBackend.memoryPercent; subtext: systemBackend.memoryUsed + " / " + systemBackend.memoryTotal }
+            }
+            IosGroup {
+                width: parent.width
+                IosInfoRow { label: "内存用量"; value: systemBackend.memoryUsed + " / " + systemBackend.memoryTotal; last: true }
+            }
             Column {
-                anchors.fill: parent; anchors.margins: 26; spacing: 14
-                Text { text: networkActionDialog.ssid; color: window.ink; font.family: window.uiFont; font.pixelSize: 25; font.weight: Font.Bold; width: parent.width; elide: Text.ElideRight }
-                Text {
-                    text: networkActionDialog.activeNetwork ? "当前已连接网络" : "已保存此网络的连接信息"
-                    color: window.secondary; font.family: window.uiFont; font.pixelSize: 17
-                }
-                Row {
-                    visible: networkActionDialog.activeNetwork
-                    anchors.horizontalCenter: parent.horizontalCenter; spacing: 14
-                    KeyboardKey { label: "取消"; keyWidth: 150; onTapped: networkActionDialog.close() }
-                    KeyboardKey {
-                        label: "忘记此网络"; keyWidth: 190; destructive: true
-                        onTapped: { systemBackend.forgetWifi(networkActionDialog.ssid); networkActionDialog.close() }
-                    }
-                }
-                Text {
-                    visible: !networkActionDialog.activeNetwork
-                    width: parent.width
-                    text: "密码发生变化时请选择“重新输入密码”"
-                    color: window.secondary; font.family: window.uiFont; font.pixelSize: 15
-                }
-                Row {
-                    visible: !networkActionDialog.activeNetwork
-                    anchors.horizontalCenter: parent.horizontalCenter; spacing: 12
-                    KeyboardKey {
-                        label: "忘记网络"; keyWidth: 170; destructive: true
-                        onTapped: { systemBackend.forgetWifi(networkActionDialog.ssid); networkActionDialog.close() }
-                    }
-                    KeyboardKey {
-                        label: "重新输入密码"; keyWidth: 190
-                        onTapped: {
-                            var targetSsid = networkActionDialog.ssid
-                            networkActionDialog.close()
-                            passwordDialog.openFor(targetSsid)
+                width: parent.width; spacing: 10
+                Text { text: "逻辑处理器"; color: window.ink; font.family: window.uiFont; font.pixelSize: 19; font.weight: Font.DemiBold }
+                Repeater {
+                    model: systemBackend.cpuUsage
+                    delegate: RowLayout {
+                        width: parent.width; height: 34
+                        Text { text: index === 0 ? "总体" : "处理器 " + index; color: window.secondary; font.family: window.uiFont; font.pixelSize: 14; Layout.preferredWidth: 120 }
+                        Rectangle {
+                            Layout.fillWidth: true; height: 8; radius: 4; color: "#E7E5EA"
+                            Rectangle { width: Math.max(modelData, 0) / 100 * parent.width; height: parent.height; radius: 4; color: window.purple }
                         }
-                    }
-                    KeyboardKey {
-                        label: "连接"; keyWidth: 150; accent: true
-                        onTapped: { systemBackend.connectWifi(networkActionDialog.ssid, ""); networkActionDialog.close() }
+                        Text { text: modelData + "%"; color: window.ink; font.family: window.uiFont; font.pixelSize: 14; Layout.alignment: Qt.AlignRight }
                     }
                 }
             }
+            Timer { interval: 2000; running: settingsPage.section === "performance"; repeat: true; triggeredOnStart: true; onTriggered: systemBackend.refreshPerformance() }
         }
     }
 
     Item {
-        id: wifiOperationOverlay
-        parent: scene; anchors.fill: parent; z: 2150
+        id: wifiOperationBanner
+        parent: scene
+        z: 2050
         visible: systemBackend.wifiOperating
-        Rectangle { anchors.fill: parent; color: "#470B0A0D" }
-        MouseArea { anchors.fill: parent }
+        anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: window.statusBarHeight + 10 }
+        height: 56
         Rectangle {
-            width: 650; height: 176; anchors.centerIn: parent
-            radius: 28; color: "#FCFBFD"; border.color: "#DDD9E3"; border.width: 1
-            RowLayout {
-                anchors.fill: parent; anchors.margins: 26; spacing: 20
+            anchors { horizontalCenter: parent.horizontalCenter }
+            width: Math.min(parent.width - 48, bannerText.implicitWidth + 78)
+            height: parent.height
+            radius: 18
+            color: "#F4F1FF"
+            border.color: "#D4CDF5"
+            border.width: 1
+            Row {
+                anchors.centerIn: parent; spacing: 12
                 Rectangle {
-                    Layout.preferredWidth: 70; Layout.preferredHeight: 70; radius: 21
-                    color: systemBackend.wifiOperation === "connect" ? "#7B6DF0" : "#A09AA5"
-                    Image {
-                        anchors.centerIn: parent; width: 38; height: 38
-                        source: "qrc:/assets/icons/wifi.svg"; sourceSize.width: 76; sourceSize.height: 76
-                    }
+                    width: 12; height: 12; radius: 6
+                    color: window.purple
+                    anchors.verticalCenter: parent.verticalCenter
                 }
-                ColumnLayout {
-                    Layout.fillWidth: true; spacing: 7
-                    Text {
-                        text: systemBackend.wifiOperation === "connect"
-                              ? "正在连接到 “" + systemBackend.wifiOperationSsid + "”"
-                              : "正在忘记 “" + systemBackend.wifiOperationSsid + "”"
-                        color: window.ink; font.family: window.uiFont; font.pixelSize: 23; font.weight: Font.Bold
-                        Layout.fillWidth: true; elide: Text.ElideRight
-                    }
-                    Text {
-                        text: systemBackend.wifiOperation === "connect"
-                              ? "正在验证密码并获取网络地址，请稍候"
-                              : "正在删除保存的密码和连接配置"
-                        color: window.secondary; font.family: window.uiFont; font.pixelSize: 17
-                    }
-                    Text {
-                        text: "完成后会自动显示结果"
-                        color: "#8C8491"; font.family: window.uiFont; font.pixelSize: 14
-                    }
+                Text {
+                    id: bannerText
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: systemBackend.wifiOperation === "connect"
+                          ? "正在连接到 “" + systemBackend.wifiOperationSsid + "”…"
+                          : "正在忘记 “" + systemBackend.wifiOperationSsid + "”…"
+                    color: "#5A4CC4"
+                    font.family: window.uiFont; font.pixelSize: 17; font.weight: Font.DemiBold
                 }
             }
         }
@@ -1181,7 +1584,7 @@ ApplicationWindow {
 
         Row {
             anchors { right: parent.right; rightMargin: 34; verticalCenter: parent.verticalCenter }
-            spacing: 18
+            spacing: 16
 
             Image {
                 width: 25; height: 25
@@ -1196,22 +1599,19 @@ ApplicationWindow {
                 Text { anchors.verticalCenter: parent.verticalCenter; text: systemBackend.volumePercent >= 0 ? systemBackend.volumePercent + "%" : "--"; color: window.ink; font.family: window.uiFont; font.pixelSize: 16; font.weight: Font.Medium }
             }
 
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: window.batteryPowerLabel()
+                color: window.batteryPowerColor()
+                font.family: window.uiFont; font.pixelSize: 16; font.weight: Font.DemiBold
+            }
+
             Item {
                 id: statusBattery
                 width: 64; height: 30
                 property color trackColor: "#E5E5EA"
-                property color outlineColor: systemBackend.batteryCharging
-                                             ? "#34C759"
-                                             : (systemBackend.batteryPercent >= 0 && systemBackend.batteryPercent <= 20
-                                                ? "#FF3B30"
-                                                : (systemBackend.batteryPercent >= 0 && systemBackend.batteryPercent <= 40
-                                                   ? "#FFCC00" : "#AAA6AE"))
-                property color fillColor: systemBackend.batteryCharging
-                                          ? "#34C759"
-                                          : (systemBackend.batteryPercent >= 0 && systemBackend.batteryPercent <= 20
-                                             ? "#FF3B30"
-                                             : (systemBackend.batteryPercent >= 0 && systemBackend.batteryPercent <= 40
-                                                ? "#FFCC00" : "#4B4650"))
+                property color outlineColor: window.batteryOutlineColor()
+                property color fillColor: window.batteryFillColor()
                 property color fillTextColor: !systemBackend.batteryCharging
                                                && systemBackend.batteryPercent > 20
                                                && systemBackend.batteryPercent <= 40
@@ -1373,12 +1773,14 @@ ApplicationWindow {
     component IosInfoRow: Item {
         property string label: ""
         property string value: ""
+        property color valueColor: window.secondary
+        property bool emphasize: false
         property bool last: false
         width: parent.width; height: 62
         RowLayout {
             anchors.fill: parent; anchors.leftMargin: 18; anchors.rightMargin: 18
             Text { text: label; color: window.ink; font.family: window.uiFont; font.pixelSize: 18; Layout.fillWidth: true }
-            Text { text: value; color: window.secondary; font.family: window.uiFont; font.pixelSize: 17 }
+            Text { text: value; color: valueColor; font.family: window.uiFont; font.pixelSize: 17; font.weight: emphasize ? Font.DemiBold : Font.Normal }
         }
         Rectangle { visible: !last; anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 18 } height: 1; color: window.separator }
     }

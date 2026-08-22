@@ -2,6 +2,8 @@
 
 #include <QtConcurrent/QtConcurrentRun>
 #include <QAbstractSocket>
+#include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -197,23 +199,104 @@ QVariantList collectEthernetPorts()
     return ports;
 }
 
-QVariantMap collectStatus()
+bool parseCpuLine(const QByteArray &line, QVector<quint64> *idleOut, QVector<quint64> *totalOut)
+{
+    // "cpu0  user nice system idle iowait irq softirq steal guest guest_nice"
+    QList<QByteArray> parts = line.split(' ');
+    parts.removeAll(QByteArray());
+    if (parts.size() < 5) return false;
+    const int count = qMin(8, parts.size() - 1);
+    quint64 values[8] = {};
+    for (int i = 0; i < count; ++i) {
+        bool ok = false;
+        values[i] = parts.at(i + 1).toULongLong(&ok);
+        if (!ok) return false;
+    }
+    quint64 total = 0;
+    for (int i = 0; i < count; ++i) total += values[i];
+    idleOut->append(values[3] + values[4]);
+    totalOut->append(total);
+    return true;
+}
+
+int parseGpuBusy(const QString &text)
+{
+    QString value = text.trimmed();
+    if (value.isEmpty()) return -1;
+    if (value.endsWith(QLatin1Char('%'))) value.chop(1);
+    value = value.trimmed();
+    bool ok = false;
+    const qint64 parsed = value.toLongLong(&ok);
+    if (!ok || parsed < 0 || parsed > 100) return -1;
+    return static_cast<int>(parsed);
+}
+
+QVariantMap collectStatus(const QString &scope)
 {
     QVariantMap result;
-    const QString wifi = runProcess(QStringLiteral("nmcli"),
-                                    {QStringLiteral("-t"), QStringLiteral("-e"), QStringLiteral("yes"),
-                                     QStringLiteral("-f"),
-                                     QStringLiteral("ACTIVE,SSID"), QStringLiteral("device"),
-                                     QStringLiteral("wifi")}, 2500);
-    QString currentWifi;
-    for (const QString &line : wifi.split(QRegularExpression(QStringLiteral("\\r?\\n")), Qt::SkipEmptyParts)) {
-        const QStringList fields = splitNmcliTerseLine(line);
-        if (fields.size() >= 2 && fields.at(0) == QStringLiteral("yes")) {
-            currentWifi = fields.at(1);
-            break;
+    if (scope != QStringLiteral("idle")) {
+        const QString wifi = runProcess(QStringLiteral("nmcli"),
+                                        {QStringLiteral("-t"), QStringLiteral("-e"), QStringLiteral("yes"),
+                                         QStringLiteral("-f"),
+                                         QStringLiteral("ACTIVE,SSID"), QStringLiteral("device"),
+                                         QStringLiteral("wifi")}, 2500);
+        QString currentWifi;
+        for (const QString &line : wifi.split(QRegularExpression(QStringLiteral("\\r?\\n")), Qt::SkipEmptyParts)) {
+            const QStringList fields = splitNmcliTerseLine(line);
+            if (fields.size() >= 2 && fields.at(0) == QStringLiteral("yes")) {
+                currentWifi = fields.at(1);
+                break;
+            }
+        }
+        result.insert(QStringLiteral("wifiName"), currentWifi);
+
+        if (!currentWifi.isEmpty() && scope == QStringLiteral("wifi")) {
+            QString wifiDevice;
+            QString wifiIpv4;
+            QString wifiGateway;
+            QString wifiMac;
+            const QString deviceStatus = runProcess(QStringLiteral("nmcli"),
+                                                    {QStringLiteral("-t"), QStringLiteral("-e"), QStringLiteral("yes"),
+                                                     QStringLiteral("-f"), QStringLiteral("DEVICE,TYPE,STATE"),
+                                                     QStringLiteral("device"), QStringLiteral("status")}, 1500);
+            for (const QString &line : deviceStatus.split(QRegularExpression(QStringLiteral("\\r?\\n")), Qt::SkipEmptyParts)) {
+                const QStringList fields = splitNmcliTerseLine(line);
+                if (fields.size() >= 3 && fields.at(1) == QStringLiteral("wifi")
+                        && fields.at(2).startsWith(QStringLiteral("connected"))) {
+                    wifiDevice = fields.at(0);
+                    break;
+                }
+            }
+            if (wifiDevice.isEmpty()) wifiDevice = QStringLiteral("wlan0");
+
+            const QNetworkInterface interface = QNetworkInterface::interfaceFromName(wifiDevice);
+            for (const QNetworkAddressEntry &address : interface.addressEntries()) {
+                const QHostAddress ip = address.ip();
+                if (ip.protocol() == QAbstractSocket::IPv4Protocol && wifiIpv4.isEmpty()) {
+                    wifiIpv4 = ip.toString();
+                    break;
+                }
+            }
+
+            const QString deviceShow = runProcess(QStringLiteral("nmcli"),
+                                                  {QStringLiteral("-t"), QStringLiteral("-e"), QStringLiteral("yes"),
+                                                   QStringLiteral("-f"), QStringLiteral("IP4.GATEWAY,GENERAL.HWADDR"),
+                                                   QStringLiteral("device"), QStringLiteral("show"), wifiDevice}, 1500);
+            for (const QString &line : deviceShow.split(QRegularExpression(QStringLiteral("\\r?\\n")), Qt::SkipEmptyParts)) {
+                const int sep = line.indexOf(QLatin1Char(':'));
+                if (sep <= 0) continue;
+                const QString key = line.left(sep);
+                const QString value = line.mid(sep + 1).trimmed();
+                if (key == QStringLiteral("IP4.GATEWAY") && wifiGateway.isEmpty()) wifiGateway = value;
+                else if (key.endsWith(QStringLiteral("HWADDR")) && wifiMac.isEmpty()) wifiMac = value;
+            }
+            if (wifiMac.isEmpty()) wifiMac = readTextFile(QStringLiteral("/sys/class/net/") + wifiDevice + QStringLiteral("/address"));
+            result.insert(QStringLiteral("wifiDevice"), wifiDevice);
+            result.insert(QStringLiteral("wifiIpv4"), wifiIpv4);
+            result.insert(QStringLiteral("wifiGateway"), wifiGateway);
+            result.insert(QStringLiteral("wifiMac"), wifiMac);
         }
     }
-    result.insert(QStringLiteral("wifiName"), currentWifi);
 
     bool batteryAvailable = false;
     int batteryPercent = -1;
@@ -312,18 +395,20 @@ QVariantMap collectStatus()
             || cards.contains(QStringLiteral("meow-speaker"), Qt::CaseInsensitive)
             || cards.contains(QStringLiteral("simple-card"), Qt::CaseInsensitive);
     int volumePercent = -1;
-    const QRegularExpression percentExpression(QStringLiteral("\\[(\\d{1,3})%\\]"));
-    for (const QString &control : {QStringLiteral("Speaker"), QStringLiteral("Meow")}) {
-        const QString output = runProcess(QStringLiteral("amixer"),
-                                          {QStringLiteral("-c"), QStringLiteral("Speaker"),
-                                           QStringLiteral("sget"), control}, 1200);
-        QRegularExpressionMatchIterator matches = percentExpression.globalMatch(output);
-        while (matches.hasNext()) {
-            bool ok = false;
-            const int value = matches.next().captured(1).toInt(&ok);
-            if (ok) volumePercent = qBound(0, value, 100);
+    if (scope == QStringLiteral("sound")) {
+        const QRegularExpression percentExpression(QStringLiteral("\\[(\\d{1,3})%\\]"));
+        for (const QString &control : {QStringLiteral("Speaker"), QStringLiteral("Meow")}) {
+            const QString output = runProcess(QStringLiteral("amixer"),
+                                              {QStringLiteral("-c"), QStringLiteral("Speaker"),
+                                               QStringLiteral("sget"), control}, 1200);
+            QRegularExpressionMatchIterator matches = percentExpression.globalMatch(output);
+            while (matches.hasNext()) {
+                bool ok = false;
+                const int value = matches.next().captured(1).toInt(&ok);
+                if (ok) volumePercent = qBound(0, value, 100);
+            }
+            if (volumePercent >= 0) break;
         }
-        if (volumePercent >= 0) break;
     }
     result.insert(QStringLiteral("audioAvailable"), audioAvailable);
     result.insert(QStringLiteral("volumePercent"), volumePercent);
@@ -349,7 +434,9 @@ QVariantMap collectStatus()
     result.insert(QStringLiteral("brightnessMax"), brightnessMax);
     result.insert(QStringLiteral("displayBrightnessPercent"), brightnessPercent);
     result.insert(QStringLiteral("brightnessAvailable"), !backlightPath.isEmpty());
-    result.insert(QStringLiteral("ethernetPorts"), collectEthernetPorts());
+    if (scope == QStringLiteral("ethernet")) {
+        result.insert(QStringLiteral("ethernetPorts"), collectEthernetPorts());
+    }
     return result;
 }
 
@@ -488,6 +575,8 @@ QVariantMap runWifiOperation(const QString &operation, const QString &ssid, cons
 SystemBackend::SystemBackend(QObject *parent)
     : QObject(parent), m_statusWatcher(this), m_wifiScanWatcher(this), m_wifiOperationWatcher(this)
 {
+    m_lastInputMs = QDateTime::currentMSecsSinceEpoch();
+    if (qApp) qApp->installEventFilter(this);
     m_volumeSetTimer.setSingleShot(true);
     m_volumeSetTimer.setInterval(80);
     m_brightnessSetTimer.setSingleShot(true);
@@ -559,6 +648,10 @@ QString SystemBackend::nvmeTotal() const { return m_nvmeTotal; }
 int SystemBackend::nvmePercent() const { return m_nvmePercent; }
 QString SystemBackend::wifiName() const { return m_wifiName; }
 bool SystemBackend::wifiConnected() const { return !m_wifiName.isEmpty(); }
+QString SystemBackend::wifiIpv4() const { return m_wifiIpv4; }
+QString SystemBackend::wifiGateway() const { return m_wifiGateway; }
+QString SystemBackend::wifiMac() const { return m_wifiMac; }
+QString SystemBackend::wifiDevice() const { return m_wifiDevice; }
 bool SystemBackend::wifiScanning() const { return m_wifiScanWatcher.isRunning(); }
 bool SystemBackend::wifiOperating() const { return m_wifiOperationWatcher.isRunning(); }
 QString SystemBackend::wifiOperation() const { return m_wifiOperation; }
@@ -586,6 +679,12 @@ int SystemBackend::volumePercent() const { return m_volumePercent; }
 bool SystemBackend::audioAvailable() const { return m_audioAvailable; }
 int SystemBackend::displayBrightnessPercent() const { return m_displayBrightnessPercent; }
 bool SystemBackend::brightnessAvailable() const { return m_brightnessAvailable; }
+int SystemBackend::cpuTotal() const { return m_cpuTotal; }
+QVariantList SystemBackend::cpuUsage() const { return m_cpuUsage; }
+int SystemBackend::gpuUsage() const { return m_gpuUsage; }
+int SystemBackend::memoryPercent() const { return m_memoryPercent; }
+QString SystemBackend::memoryUsed() const { return formatBytes(m_memoryUsedBytes); }
+QString SystemBackend::memoryTotal() const { return formatBytes(m_memoryTotalBytes); }
 
 int SystemBackend::displayRotation() const
 {
@@ -599,6 +698,7 @@ void SystemBackend::refresh()
     refreshSystem();
     refreshStorage();
     refreshStatus();
+    refreshPerformance();
 }
 
 void SystemBackend::refreshStatus()
@@ -607,7 +707,108 @@ void SystemBackend::refreshStatus()
         m_statusRefreshPending = true;
         return;
     }
-    m_statusWatcher.setFuture(QtConcurrent::run(collectStatus));
+    m_statusWatcher.setFuture(QtConcurrent::run(collectStatus, m_activeScope));
+}
+
+void SystemBackend::setActiveScope(const QString &scope)
+{
+    if (m_activeScope == scope) return;
+    m_activeScope = scope;
+    if (!m_statusWatcher.isRunning()) refreshStatus();
+}
+
+qint64 SystemBackend::idleMs() const
+{
+    return QDateTime::currentMSecsSinceEpoch() - m_lastInputMs;
+}
+
+bool SystemBackend::eventFilter(QObject *watched, QEvent *event)
+{
+    Q_UNUSED(watched)
+    switch (event->type()) {
+    case QEvent::MouseButtonPress:
+    case QEvent::TouchBegin:
+    case QEvent::KeyPress:
+        m_lastInputMs = QDateTime::currentMSecsSinceEpoch();
+        emit inputActivity();
+        break;
+    case QEvent::MouseButtonRelease:
+    case QEvent::TouchEnd:
+    case QEvent::Wheel:
+        m_lastInputMs = QDateTime::currentMSecsSinceEpoch();
+        break;
+    default:
+        break;
+    }
+    return false;
+}
+
+void SystemBackend::refreshPerformance()
+{
+    QVector<quint64> idle;
+    QVector<quint64> total;
+    QFile statFile(QStringLiteral("/proc/stat"));
+    if (statFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        while (!statFile.atEnd()) {
+            const QByteArray line = statFile.readLine().trimmed();
+            if (!line.startsWith("cpu")) continue;
+            parseCpuLine(line, &idle, &total);
+        }
+    }
+    if (idle.isEmpty() || total.isEmpty() || idle.size() != total.size()) return;
+
+    QVariantList usage;
+    if (m_cpuHavePrev && m_cpuPrevIdle.size() == idle.size()) {
+        for (int i = 0; i < idle.size(); ++i) {
+            const qint64 idleDelta = static_cast<qint64>(idle.at(i) - m_cpuPrevIdle.at(i));
+            const qint64 totalDelta = static_cast<qint64>(total.at(i) - m_cpuPrevTotal.at(i));
+            const int percent = totalDelta > 0
+                    ? qBound(0, static_cast<int>(100.0 * (totalDelta - idleDelta) / totalDelta), 100)
+                    : 0;
+            usage.append(percent);
+        }
+    } else {
+        for (int i = 0; i < idle.size(); ++i) usage.append(0);
+    }
+    m_cpuHavePrev = true;
+    m_cpuPrevIdle = idle;
+    m_cpuPrevTotal = total;
+    const int cpuTotal = usage.isEmpty() ? -1 : usage.at(0).toInt();
+
+    int gpu = -1;
+    for (const QString &path : {QStringLiteral("/sys/kernel/gpu/gpu_busy"),
+                                QStringLiteral("/sys/kernel/gpu/gpu_utilization")}) {
+        const QString text = readTextFile(path);
+        if (text.isEmpty()) continue;
+        const int parsed = parseGpuBusy(text);
+        if (parsed >= 0) { gpu = parsed; break; }
+    }
+
+    qint64 memTotal = 0;
+    qint64 memAvailable = 0;
+    QFile memInfo(QStringLiteral("/proc/meminfo"));
+    if (memInfo.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        while (!memInfo.atEnd()) {
+            const QString line = QString::fromLatin1(memInfo.readLine().trimmed());
+            if (line.startsWith(QStringLiteral("MemTotal"))) memTotal = line.section(QLatin1Char(' '), -2, -2).toLongLong();
+            else if (line.startsWith(QStringLiteral("MemAvailable"))) memAvailable = line.section(QLatin1Char(' '), -2, -2).toLongLong();
+            if (memTotal > 0 && memAvailable > 0) break;
+        }
+    }
+    const qint64 memUsed = qMax<qint64>(0, memTotal - memAvailable);
+    const int memPercent = memTotal > 0 ? qBound(0, static_cast<int>(100.0 * memUsed / memTotal), 100) : -1;
+
+    if (cpuTotal != m_cpuTotal || usage != m_cpuUsage || gpu != m_gpuUsage
+            || memPercent != m_memoryPercent || memUsed != m_memoryUsedBytes
+            || memTotal != m_memoryTotalBytes) {
+        m_cpuTotal = cpuTotal;
+        m_cpuUsage = usage;
+        m_gpuUsage = gpu;
+        m_memoryPercent = memPercent;
+        m_memoryUsedBytes = memUsed;
+        m_memoryTotalBytes = memTotal;
+        emit performanceChanged();
+    }
 }
 
 void SystemBackend::refreshSystem()
@@ -687,10 +888,25 @@ void SystemBackend::refreshStorage()
 
 void SystemBackend::applyStatusSnapshot(const QVariantMap &snapshot)
 {
-    const QString wifiName = snapshot.value(QStringLiteral("wifiName")).toString();
-    if (wifiName != m_wifiName) {
-        m_wifiName = wifiName;
-        emit wifiChanged();
+    if (snapshot.contains(QStringLiteral("wifiName"))) {
+        const QString wifiName = snapshot.value(QStringLiteral("wifiName")).toString();
+        QString wifiIpv4 = m_wifiIpv4;
+        QString wifiGateway = m_wifiGateway;
+        QString wifiMac = m_wifiMac;
+        QString wifiDevice = m_wifiDevice;
+        if (snapshot.contains(QStringLiteral("wifiIpv4"))) wifiIpv4 = snapshot.value(QStringLiteral("wifiIpv4")).toString();
+        if (snapshot.contains(QStringLiteral("wifiGateway"))) wifiGateway = snapshot.value(QStringLiteral("wifiGateway")).toString();
+        if (snapshot.contains(QStringLiteral("wifiMac"))) wifiMac = snapshot.value(QStringLiteral("wifiMac")).toString();
+        if (snapshot.contains(QStringLiteral("wifiDevice"))) wifiDevice = snapshot.value(QStringLiteral("wifiDevice")).toString();
+        if (wifiName != m_wifiName || wifiIpv4 != m_wifiIpv4 || wifiGateway != m_wifiGateway
+                || wifiMac != m_wifiMac || wifiDevice != m_wifiDevice) {
+            m_wifiName = wifiName;
+            m_wifiIpv4 = wifiIpv4;
+            m_wifiGateway = wifiGateway;
+            m_wifiMac = wifiMac;
+            m_wifiDevice = wifiDevice;
+            emit wifiChanged();
+        }
     }
 
     const bool batteryAvailable = snapshot.value(QStringLiteral("batteryAvailable")).toBool();
@@ -726,8 +942,9 @@ void SystemBackend::applyStatusSnapshot(const QVariantMap &snapshot)
 
     const int volumePercent = snapshot.value(QStringLiteral("volumePercent"), -1).toInt();
     const bool audioAvailable = snapshot.value(QStringLiteral("audioAvailable")).toBool();
-    if (volumePercent != m_volumePercent || audioAvailable != m_audioAvailable) {
-        m_volumePercent = volumePercent;
+    const bool hasVolume = snapshot.contains(QStringLiteral("volumePercent"));
+    if ((hasVolume && volumePercent != m_volumePercent) || audioAvailable != m_audioAvailable) {
+        if (hasVolume) m_volumePercent = volumePercent;
         m_audioAvailable = audioAvailable;
         emit audioChanged();
     }
@@ -747,7 +964,7 @@ void SystemBackend::applyStatusSnapshot(const QVariantMap &snapshot)
     }
 
     const QVariantList ethernetPorts = snapshot.value(QStringLiteral("ethernetPorts")).toList();
-    if (ethernetPorts != m_ethernetPorts) {
+    if (snapshot.contains(QStringLiteral("ethernetPorts")) && ethernetPorts != m_ethernetPorts) {
         m_ethernetPorts = ethernetPorts;
         emit ethernetChanged();
     }
