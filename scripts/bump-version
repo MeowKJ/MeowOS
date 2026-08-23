@@ -1,0 +1,31 @@
+#!/bin/sh
+set -eu
+
+ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+CURRENT=$(cat "$ROOT_DIR/VERSION")
+IFS=. read -r MAJOR MINOR PATCH <<EOF
+$CURRENT
+EOF
+
+REQUEST=${1:-patch}
+case "$REQUEST" in
+    patch) PATCH=$((PATCH + 1)) ;;
+    minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+    major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+    *)
+        if ! printf '%s\n' "$REQUEST" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            printf '%s\n' "Usage: $0 [patch|minor|major|MAJOR.MINOR.PATCH]" >&2
+            exit 2
+        fi
+        IFS=. read -r MAJOR MINOR PATCH <<EOF
+$REQUEST
+EOF
+        ;;
+esac
+
+NEXT="$MAJOR.$MINOR.$PATCH"
+printf '%s\n' "$NEXT" > "$ROOT_DIR/VERSION"
+sed "s/^#define MEOW_OS_VERSION \"[^\"]*\"/#define MEOW_OS_VERSION \"$NEXT\"/" \
+    "$ROOT_DIR/src/version.h" > "$ROOT_DIR/src/version.h.tmp"
+mv "$ROOT_DIR/src/version.h.tmp" "$ROOT_DIR/src/version.h"
+printf 'Meow OS %s -> %s\n' "$CURRENT" "$NEXT"

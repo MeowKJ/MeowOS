@@ -1,0 +1,15 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+    metadata {
+        title = "Meow OS PCIe Gen1 diagnostic";
+        compatible = "radxa,cubie-a5e";
+        category = "diagnostic";
+        description = "Limit the A5E PCIe root port to Gen1 to diagnose NVMe link stability.";
+    };
+};
+
+&pcie {
+    max-link-speed = <1>;
+};

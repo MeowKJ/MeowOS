@@ -1,0 +1,22 @@
+#!/bin/sh
+set -eu
+
+DEVICE="${1:?device path required}"
+MOUNT_POINT=/data
+
+[ -b "$DEVICE" ] || exit 0
+mkdir -p "$MOUNT_POINT"
+if mountpoint -q "$MOUNT_POINT"; then
+    exit 0
+fi
+
+if ! mountpoint -q "$MOUNT_POINT"; then
+    fs_type=$(blkid -o value -s TYPE "$DEVICE" 2>/dev/null || true)
+    if [ -n "$fs_type" ]; then
+        mount -t "$fs_type" -o defaults,noatime "$DEVICE" "$MOUNT_POINT"
+    else
+        mount -o defaults,noatime "$DEVICE" "$MOUNT_POINT"
+    fi
+fi
+chown radxa:radxa "$MOUNT_POINT" 2>/dev/null || true
+chmod 0755 "$MOUNT_POINT"

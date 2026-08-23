@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+
+PREREQ="plymouth"
+
+prereqs() { echo "$PREREQ"; }
+
+case "${1:-}" in
+    prereqs) prereqs; exit 0 ;;
+esac
+
+mkdir -p "${DESTDIR}/scripts/init-top" "${DESTDIR}/scripts/init-premount"
+install -m 0755 "${CONFDIR:-/etc/initramfs-tools}/meow-plymouth-init-top" \
+    "${DESTDIR}/scripts/init-top/meow-plymouth"
+install -m 0755 "${CONFDIR:-/etc/initramfs-tools}/meow-plymouth-init-premount" \
+    "${DESTDIR}/scripts/init-premount/plymouth"

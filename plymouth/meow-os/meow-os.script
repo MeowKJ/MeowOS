@@ -1,0 +1,13 @@
+Window.SetBackgroundTopColor(1.0, 0.976, 0.984);
+Window.SetBackgroundBottomColor(1.0, 0.976, 0.984);
+
+if (Window.GetWidth() > Window.GetHeight()) {
+    boot_image = Image("meow-boot-landscape.png");
+} else {
+    boot_image = Image("meow-boot-portrait.png");
+}
+
+boot_sprite = Sprite(boot_image);
+boot_sprite.SetX((Window.GetWidth() - boot_image.GetWidth()) / 2);
+boot_sprite.SetY((Window.GetHeight() - boot_image.GetHeight()) / 2);
+boot_sprite.SetZ(10000);

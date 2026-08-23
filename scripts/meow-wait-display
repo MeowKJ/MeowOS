@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+
+# The shell starts before network services. Wait only for the local display
+# and virtual terminal nodes required by EGLFS.
+i=0
+while [ "$i" -lt 100 ]; do
+    if [ -e /dev/dri/card0 ] && [ -e /dev/tty1 ]; then
+        exit 0
+    fi
+    i=$((i + 1))
+    sleep 0.05
+done
+
+echo "Meow OS display devices did not appear" >&2
+exit 1

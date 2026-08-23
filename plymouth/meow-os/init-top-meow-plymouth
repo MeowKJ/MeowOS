@@ -1,0 +1,22 @@
+#!/bin/sh
+
+PREREQ="udev"
+
+prereqs() { echo "$PREREQ"; }
+
+case "$1" in
+    prereqs) prereqs; exit 0 ;;
+esac
+
+for argument in $(cat /proc/cmdline); do
+    case "$argument" in
+        nosplash*|plymouth.enable=0) exit 0 ;;
+    esac
+done
+
+[ -e /run/plymouth/meow-early-started ] && exit 0
+mkdir -p /run/plymouth
+if /usr/sbin/plymouthd --mode=boot --attach-to-session --pid-file=/run/plymouth/pid; then
+    touch /run/plymouth/meow-early-started
+    /usr/bin/plymouth --show-splash || true
+fi

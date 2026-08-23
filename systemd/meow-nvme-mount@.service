@@ -1,0 +1,9 @@
+[Unit]
+Description=Mount NVMe partition %I at /data
+After=systemd-udev-settle.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=+/opt/meow-os/bin/mount-nvme-data /dev/%I
+ExecStop=+/bin/umount /data

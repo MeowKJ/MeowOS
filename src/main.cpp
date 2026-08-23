@@ -3,6 +3,8 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
+#include <QQuickItem>
+#include <QQuickItemGrabResult>
 #include <QQuickWindow>
 #include <QSurfaceFormat>
 #include <QTimer>
@@ -11,12 +13,13 @@
 
 int main(int argc, char *argv[])
 {
-    // Prefer GPU scene graph on EGLFS/Panfrost; avoid accidental software fallback.
-    qunsetenv("QT_QUICK_BACKEND");
+    // Prefer the GPU scene graph on EGLFS/Panfrost, while preserving an
+    // explicitly requested software backend for offscreen QA and linuxfb.
+    QString platformHint = qEnvironmentVariable("QT_QPA_PLATFORM");
+    if (platformHint.isEmpty()) platformHint = qEnvironmentVariable("MEOW_QPA_PLATFORM");
+    if (platformHint.startsWith(QLatin1String("eglfs"))) qunsetenv("QT_QUICK_BACKEND");
     if (qEnvironmentVariableIsEmpty("QSG_RENDER_LOOP"))
         qputenv("QSG_RENDER_LOOP", "threaded");
-    qputenv("QT_QUICK_FLICKABLE_WHEEL_DECELERATION", "5000");
-
     QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
     const QString qpa = qEnvironmentVariable("QT_QPA_PLATFORM");
     const QString meowQpa = qEnvironmentVariable("MEOW_QPA_PLATFORM");
@@ -48,6 +51,11 @@ int main(int argc, char *argv[])
     if (snapshotIndex >= 0 && snapshotIndex + 1 < arguments.size())
         snapshotFile = arguments.at(snapshotIndex + 1);
     if (!snapshotFile.isEmpty()) {
+        QQuickWindow *snapshotWindow = qobject_cast<QQuickWindow *>(engine.rootObjects().value(0));
+        if (snapshotWindow && platformHint.startsWith(QLatin1String("offscreen"))) {
+            snapshotWindow->setVisibility(QWindow::Windowed);
+            snapshotWindow->resize(800, 1280);
+        }
         int delay = 1800;
         const int delayIndex = arguments.indexOf(QStringLiteral("--snapshot-delay"));
         if (delayIndex >= 0 && delayIndex + 1 < arguments.size())
@@ -55,11 +63,17 @@ int main(int argc, char *argv[])
         QTimer::singleShot(delay, &engine, [&engine, snapshotFile]() {
             QQuickWindow *quickWindow = qobject_cast<QQuickWindow *>(engine.rootObjects().value(0));
             if (quickWindow) {
-                const QImage image = quickWindow->grabWindow();
-                image.save(snapshotFile);
+                const QSharedPointer<QQuickItemGrabResult> result = quickWindow->contentItem()->grabToImage();
+                QObject::connect(result.data(), &QQuickItemGrabResult::ready, quickWindow,
+                                 [result, snapshotFile]() {
+                    result->image().save(snapshotFile);
+                    QCoreApplication::quit();
+                });
+                return;
             }
             QCoreApplication::quit();
         });
+        QTimer::singleShot(delay + 5000, &app, &QCoreApplication::quit);
     }
     return app.exec();
 }

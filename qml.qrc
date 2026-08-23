@@ -16,7 +16,9 @@
         <file>assets/icons/battery-wide-outline.svg</file>
         <file>assets/icons/zap-white.svg</file>
         <file>assets/icons/zap-dark.svg</file>
+        <file>assets/icons/zap-green.svg</file>
         <file>assets/icons/sun.svg</file>
         <file>assets/icons/ethernet-port.svg</file>
+        <file>assets/icons/delete.svg</file>
     </qresource>
 </RCC>

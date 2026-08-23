@@ -1,0 +1,51 @@
+#!/bin/sh
+set -eu
+
+ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+THEME_DIR=/usr/share/plymouth/themes/meow-os
+KERNEL=$(uname -r)
+INITRD=/boot/initrd.img-$KERNEL
+
+if [ -f "$ROOT_DIR/plymouth/meow-os/meow-os.plymouth" ]; then
+    THEME_SOURCE="$ROOT_DIR/plymouth/meow-os"
+    ASSET_SOURCE="$ROOT_DIR/assets/boot"
+else
+    THEME_SOURCE=/opt/meow-os/share/early-splash/theme
+    ASSET_SOURCE=/opt/meow-os/share/early-splash/assets
+fi
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "install-early-splash must run as root" >&2
+    exit 1
+fi
+
+if ! command -v plymouth-set-default-theme >/dev/null 2>&1; then
+    DEBIAN_FRONTEND=noninteractive apt-get install -y plymouth plymouth-themes
+elif ! dpkg-query -W -f='${Status}' plymouth-themes 2>/dev/null | grep -q 'install ok installed'; then
+    DEBIAN_FRONTEND=noninteractive apt-get install -y plymouth-themes
+fi
+
+install -d -m 0755 "$THEME_DIR"
+install -m 0644 "$THEME_SOURCE/meow-os.plymouth" "$THEME_DIR/meow-os.plymouth"
+install -m 0644 "$THEME_SOURCE/meow-os.script" "$THEME_DIR/meow-os.script"
+install -m 0644 "$ASSET_SOURCE/meow-boot-landscape.png" "$THEME_DIR/meow-boot-landscape.png"
+install -m 0644 "$ASSET_SOURCE/meow-boot-portrait.png" "$THEME_DIR/meow-boot-portrait.png"
+
+# Override Debian's late init-premount Plymouth entry with an early init-top
+# entry. The init-premount copy remains as a fallback and is PID-guarded.
+install -d -m 0755 /etc/initramfs-tools/hooks
+install -m 0755 "$THEME_SOURCE/init-top-meow-plymouth" /etc/initramfs-tools/meow-plymouth-init-top
+install -m 0755 "$THEME_SOURCE/init-premount-meow-plymouth" /etc/initramfs-tools/meow-plymouth-init-premount
+install -m 0755 "$THEME_SOURCE/zz-meow-plymouth" /etc/initramfs-tools/hooks/zz-meow-plymouth
+
+if [ -f "$INITRD" ] && [ ! -e "$INITRD.before-meow-plymouth" ]; then
+    cp -a "$INITRD" "$INITRD.before-meow-plymouth"
+fi
+
+plymouth-set-default-theme meow-os
+update-initramfs -u -k "$KERNEL"
+
+if ! lsinitramfs "$INITRD" | grep -q 'usr/share/plymouth/themes/meow-os/meow-os.plymouth'; then
+    echo "Meow OS Plymouth theme was not embedded in $INITRD" >&2
+    exit 1
+fi

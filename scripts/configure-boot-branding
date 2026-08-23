@@ -1,0 +1,57 @@
+#!/bin/sh
+set -eu
+
+CONF=/boot/extlinux/extlinux.conf
+[ -f "$CONF" ] || exit 0
+
+BACKUP=/boot/extlinux/extlinux.conf.before-meow-branding
+[ -e "$BACKUP" ] || cp -a "$CONF" "$BACKUP"
+
+TMP=$(mktemp)
+awk '
+    $1 == "prompt" { $2 = "0" }
+    $1 == "timeout" { $2 = "0" }
+    $1 == "label" { primary = ($2 == "l0") }
+    primary && $1 == "append" {
+        gsub(/ console=tty1/, "")
+        gsub(/ loglevel=[0-9]+/, " loglevel=0")
+        if ($0 !~ / vt.global_cursor_default=/) $0 = $0 " vt.global_cursor_default=0"
+        if ($0 !~ / systemd.show_status=/) $0 = $0 " systemd.show_status=false"
+        if ($0 !~ / rd.systemd.show_status=/) $0 = $0 " rd.systemd.show_status=false"
+        if ($0 !~ / logo.nologo/) $0 = $0 " logo.nologo"
+        if ($0 !~ / plymouth.ignore-serial-consoles/) $0 = $0 " plymouth.ignore-serial-consoles"
+    }
+    { print }
+' "$CONF" > "$TMP"
+cat "$TMP" > "$CONF"
+rm -f "$TMP"
+
+# Keep the immediate autoboot policy when a future kernel package regenerates
+# extlinux.conf through u-boot-update.
+DEFAULTS=/etc/default/u-boot
+if [ -f "$DEFAULTS" ]; then
+    DEFAULTS_BACKUP=/etc/default/u-boot.before-meow-branding
+    [ -e "$DEFAULTS_BACKUP" ] || cp -a "$DEFAULTS" "$DEFAULTS_BACKUP"
+    TMP=$(mktemp)
+    awk '
+        /^#?U_BOOT_PROMPT=/ { if (!prompt) print "U_BOOT_PROMPT=\"0\""; prompt = 1; next }
+        /^#?U_BOOT_TIMEOUT=/ { if (!timeout) print "U_BOOT_TIMEOUT=\"0\""; timeout = 1; next }
+        { print }
+        END {
+            if (!prompt) print "U_BOOT_PROMPT=\"0\""
+            if (!timeout) print "U_BOOT_TIMEOUT=\"0\""
+        }
+    ' "$DEFAULTS" > "$TMP"
+    cat "$TMP" > "$DEFAULTS"
+    rm -f "$TMP"
+fi
+
+# tty1 remains available for graphics mode, but no login prompt is painted.
+systemctl disable getty@tty1.service >/dev/null 2>&1 || true
+systemctl mask getty@tty1.service >/dev/null 2>&1 || true
+
+# This vendor helper waits for SDDM/X11 and toggles HDMI modes. Meow OS owns
+# DRM directly through EGLFS on the built-in MIPI-DSI panel, so the helper only
+# adds about 35 seconds to boot completion and can disturb the display later.
+systemctl disable hdmi-toggle-once.service >/dev/null 2>&1 || true
+systemctl mask hdmi-toggle-once.service >/dev/null 2>&1 || true

@@ -13,8 +13,10 @@
 #include <QRegularExpression>
 #include <QSet>
 #include <QStorageInfo>
+#include <QSettings>
 #include <QSysInfo>
 #include <QtMath>
+#include <cstdio>
 
 #ifdef Q_OS_LINUX
 #include <fcntl.h>
@@ -68,6 +70,34 @@ QString runProcess(const QString &program, const QStringList &arguments, int tim
     return result.started && !result.timedOut ? result.output : QString();
 }
 
+QVariantMap detectHardwareCapabilities(QString *profile)
+{
+    const QString model = readTextFile(QStringLiteral("/proc/device-tree/model"));
+    const QString compatible = readTextFile(QStringLiteral("/proc/device-tree/compatible"));
+    QString selected = QStringLiteral("Generic Linux");
+    if (model.contains(QStringLiteral("A5E"), Qt::CaseInsensitive)
+            || compatible.contains(QStringLiteral("cubie-a5e"), Qt::CaseInsensitive)) {
+        selected = QStringLiteral("Radxa Cubie A5E");
+    } else if (model.contains(QStringLiteral("A733"), Qt::CaseInsensitive)
+               || compatible.contains(QStringLiteral("a733"), Qt::CaseInsensitive)
+               || qEnvironmentVariableIsSet("MEOW_A733_PROFILE")) {
+        selected = QStringLiteral("Allwinner A733 (通用)");
+    }
+    if (profile) *profile = selected;
+    QVariantMap caps;
+    caps.insert(QStringLiteral("display"), true);
+    caps.insert(QStringLiteral("touch"), QFileInfo::exists(QStringLiteral("/dev/input/meow-touch")));
+    caps.insert(QStringLiteral("power"), QFileInfo::exists(QStringLiteral("/sys/class/power_supply")));
+    caps.insert(QStringLiteral("audio"), QFileInfo::exists(QStringLiteral("/proc/asound/cards")));
+    caps.insert(QStringLiteral("wifi"), QFileInfo::exists(QStringLiteral("/sys/class/net/wlan0")));
+    caps.insert(QStringLiteral("ethernet"), QFileInfo::exists(QStringLiteral("/sys/class/net/eth0")));
+    caps.insert(QStringLiteral("nvme"), QFileInfo::exists(QStringLiteral("/sys/class/nvme")));
+    caps.insert(QStringLiteral("usb3"), QFileInfo::exists(QStringLiteral("/sys/bus/usb/devices")));
+    caps.insert(QStringLiteral("pcie"), QFileInfo::exists(QStringLiteral("/sys/bus/pci")));
+    caps.insert(QStringLiteral("profileSource"), model.isEmpty() ? QStringLiteral("fallback") : model);
+    return caps;
+}
+
 bool readInteger(const QString &path, qint64 *value)
 {
     bool ok = false;
@@ -112,6 +142,78 @@ bool readI2cWord(quint8 address, quint8 reg, quint16 *value)
     quint8 data[2] = {};
     if (!readI2cRegister(address, reg, data, 2)) return false;
     *value = static_cast<quint16>(data[0] | (data[1] << 8));
+    return true;
+}
+
+bool writeI2cRegister(quint8 address, quint8 reg, quint8 value)
+{
+#ifdef Q_OS_LINUX
+    const QByteArray device = qEnvironmentVariable("MEOW_BATTERY_I2C", "/dev/i2c-1").toLocal8Bit();
+    const int fd = ::open(device.constData(), O_RDWR | O_CLOEXEC);
+    if (fd < 0) return false;
+    quint8 data[2] = {reg, value};
+    i2c_msg message = {};
+    message.addr = address;
+    message.len = sizeof(data);
+    message.buf = data;
+    i2c_rdwr_ioctl_data transaction = {&message, 1};
+    const bool success = ::ioctl(fd, I2C_RDWR, &transaction) >= 0;
+    ::close(fd);
+    return success;
+#else
+    Q_UNUSED(address)
+    Q_UNUSED(reg)
+    Q_UNUSED(value)
+    return false;
+#endif
+}
+
+bool configureSgm41511ChargeCurrent(quint8 *inputRegister, quint8 *chargeRegister)
+{
+    constexpr quint8 address = 0x6b;
+    constexpr quint8 sgm41511IdMask = 0x7c;
+    constexpr quint8 sgm41511Id = 0x14; // REG0B PN=0010 and SGMPART=1.
+    constexpr quint8 inputLimit2400mA = 0x17; // REG00: 100mA + 23 * 100mA.
+    constexpr quint8 chargeCurrent2400mA = 0x28; // REG02: 40 * 60mA.
+
+    quint8 part = 0;
+    quint8 reg00 = 0;
+    quint8 reg02 = 0;
+    quint8 reg05 = 0;
+    if (!readI2cRegister(address, 0x0b, &part, 1)
+            || (part & sgm41511IdMask) != sgm41511Id
+            || !readI2cRegister(address, 0x00, &reg00, 1)
+            || !readI2cRegister(address, 0x02, &reg02, 1)
+            || !readI2cRegister(address, 0x05, &reg05, 1)) {
+        return false;
+    }
+
+    // Preserve STAT, boost-current and thermal/safety settings. Disabling only
+    // the host watchdog keeps the 2.4A setting while Linux is shut down; the
+    // independent charge safety timer, termination, TS/JEITA and thermal
+    // regulation remain enabled.
+    const quint8 target00 = static_cast<quint8>((reg00 & 0x60) | inputLimit2400mA);
+    const quint8 target02 = static_cast<quint8>((reg02 & 0xc0) | chargeCurrent2400mA);
+    const quint8 target05 = static_cast<quint8>(reg05 & 0xcf);
+    if ((reg05 != target05 && !writeI2cRegister(address, 0x05, target05))
+            || (reg00 != target00 && !writeI2cRegister(address, 0x00, target00))
+            || (reg02 != target02 && !writeI2cRegister(address, 0x02, target02))) {
+        return false;
+    }
+
+    quint8 verify00 = 0;
+    quint8 verify02 = 0;
+    quint8 verify05 = 0;
+    if (!readI2cRegister(address, 0x00, &verify00, 1)
+            || !readI2cRegister(address, 0x02, &verify02, 1)
+            || !readI2cRegister(address, 0x05, &verify05, 1)
+            || (verify00 & 0x9f) != inputLimit2400mA
+            || (verify02 & 0x3f) != chargeCurrent2400mA
+            || (verify05 & 0x30) != 0) {
+        return false;
+    }
+    if (inputRegister) *inputRegister = verify00;
+    if (chargeRegister) *chargeRegister = verify02;
     return true;
 }
 
@@ -175,6 +277,10 @@ QVariantList collectEthernetPorts()
 
         QString ipv4;
         QString ipv6;
+        QString gateway;
+        QString connectionName;
+        QString method = QStringLiteral("auto");
+        QStringList dnsServers;
         const QNetworkInterface interface = QNetworkInterface::interfaceFromName(name);
         for (const QNetworkAddressEntry &address : interface.addressEntries()) {
             const QHostAddress ip = address.ip();
@@ -182,6 +288,38 @@ QVariantList collectEthernetPorts()
             if (ip.protocol() == QAbstractSocket::IPv4Protocol && ipv4.isEmpty()) ipv4 = formatted;
             else if (ip.protocol() == QAbstractSocket::IPv6Protocol && ipv6.isEmpty()
                      && !ip.isLinkLocal()) ipv6 = formatted;
+        }
+
+        const QString deviceDetails = runProcess(QStringLiteral("nmcli"),
+                                                 {QStringLiteral("-t"), QStringLiteral("-e"),
+                                                  QStringLiteral("yes"), QStringLiteral("-f"),
+                                                  QStringLiteral("GENERAL.CONNECTION,IP4.GATEWAY"),
+                                                  QStringLiteral("device"), QStringLiteral("show"), name}, 1200);
+        for (const QString &line : deviceDetails.split(QRegularExpression(QStringLiteral("\\r?\\n")),
+                                                       Qt::SkipEmptyParts)) {
+            const int separator = line.indexOf(QLatin1Char(':'));
+            if (separator <= 0) continue;
+            const QString key = line.left(separator);
+            const QString value = line.mid(separator + 1).trimmed();
+            if (key == QStringLiteral("GENERAL.CONNECTION")) connectionName = value;
+            else if (key == QStringLiteral("IP4.GATEWAY") && gateway.isEmpty()) gateway = value;
+        }
+        if (!connectionName.isEmpty() && connectionName != QStringLiteral("--")) {
+            const QString connectionDetails = runProcess(QStringLiteral("nmcli"),
+                                                         {QStringLiteral("-t"), QStringLiteral("-e"),
+                                                          QStringLiteral("yes"), QStringLiteral("-f"),
+                                                          QStringLiteral("ipv4.method,ipv4.dns"),
+                                                          QStringLiteral("connection"), QStringLiteral("show"),
+                                                          QStringLiteral("id"), connectionName}, 1200);
+            for (const QString &line : connectionDetails.split(QRegularExpression(QStringLiteral("\\r?\\n")),
+                                                                Qt::SkipEmptyParts)) {
+                const int separator = line.indexOf(QLatin1Char(':'));
+                if (separator <= 0) continue;
+                const QString key = line.left(separator).toLower();
+                const QString value = line.mid(separator + 1).trimmed();
+                if (key == QStringLiteral("ipv4.method") && !value.isEmpty()) method = value;
+                else if (key == QStringLiteral("ipv4.dns") && !value.isEmpty()) dnsServers.append(value);
+            }
         }
 
         QVariantMap port;
@@ -194,6 +332,10 @@ QVariantList collectEthernetPorts()
         port.insert(QStringLiteral("mtu"), static_cast<int>(mtuValue));
         port.insert(QStringLiteral("ipv4"), ipv4);
         port.insert(QStringLiteral("ipv6"), ipv6);
+        port.insert(QStringLiteral("gateway"), gateway);
+        port.insert(QStringLiteral("connection"), connectionName == QStringLiteral("--") ? QString() : connectionName);
+        port.insert(QStringLiteral("method"), method);
+        port.insert(QStringLiteral("dns"), dnsServers.join(QStringLiteral(", ")));
         ports.append(port);
     }
     return ports;
@@ -202,19 +344,18 @@ QVariantList collectEthernetPorts()
 bool parseCpuLine(const QByteArray &line, QVector<quint64> *idleOut, QVector<quint64> *totalOut)
 {
     // "cpu0  user nice system idle iowait irq softirq steal guest guest_nice"
-    QList<QByteArray> parts = line.split(' ');
-    parts.removeAll(QByteArray());
-    if (parts.size() < 5) return false;
-    const int count = qMin(8, parts.size() - 1);
-    quint64 values[8] = {};
-    for (int i = 0; i < count; ++i) {
-        bool ok = false;
-        values[i] = parts.at(i + 1).toULongLong(&ok);
-        if (!ok) return false;
-    }
+    char cpuName[32] = {};
+    unsigned long long values[8] = {};
+    const int parsed = std::sscanf(line.constData(),
+                                   "%31s %llu %llu %llu %llu %llu %llu %llu %llu",
+                                   cpuName, &values[0], &values[1], &values[2], &values[3],
+                                   &values[4], &values[5], &values[6], &values[7]);
+    if (parsed < 5 || QByteArray(cpuName).indexOf("cpu") != 0) return false;
+    const int count = parsed - 1;
     quint64 total = 0;
-    for (int i = 0; i < count; ++i) total += values[i];
-    idleOut->append(values[3] + values[4]);
+    for (int i = 0; i < count; ++i) total += static_cast<quint64>(values[i]);
+    idleOut->append(static_cast<quint64>(values[3])
+                    + (count > 4 ? static_cast<quint64>(values[4]) : 0));
     totalOut->append(total);
     return true;
 }
@@ -235,11 +376,11 @@ QVariantMap collectStatus(const QString &scope)
 {
     QVariantMap result;
     if (scope != QStringLiteral("idle")) {
-        const QString wifi = runProcess(QStringLiteral("nmcli"),
-                                        {QStringLiteral("-t"), QStringLiteral("-e"), QStringLiteral("yes"),
-                                         QStringLiteral("-f"),
-                                         QStringLiteral("ACTIVE,SSID"), QStringLiteral("device"),
-                                         QStringLiteral("wifi")}, 2500);
+        const ProcessResult wifiResult = runProcessDetailed(QStringLiteral("nmcli"),
+                                                             {QStringLiteral("-t"), QStringLiteral("-e"), QStringLiteral("yes"),
+                                                              QStringLiteral("-f"), QStringLiteral("ACTIVE,SSID"),
+                                                              QStringLiteral("device"), QStringLiteral("wifi")}, 2500);
+        const QString wifi = wifiResult.output;
         QString currentWifi;
         for (const QString &line : wifi.split(QRegularExpression(QStringLiteral("\\r?\\n")), Qt::SkipEmptyParts)) {
             const QStringList fields = splitNmcliTerseLine(line);
@@ -248,7 +389,7 @@ QVariantMap collectStatus(const QString &scope)
                 break;
             }
         }
-        result.insert(QStringLiteral("wifiName"), currentWifi);
+        if (wifiResult.ok()) result.insert(QStringLiteral("wifiName"), currentWifi);
 
         if (!currentWifi.isEmpty() && scope == QStringLiteral("wifi")) {
             QString wifiDevice;
@@ -302,6 +443,9 @@ QVariantMap collectStatus(const QString &scope)
     int batteryPercent = -1;
     int voltageMv = -1;
     int currentMa = 0;
+    int remainingMah = -1;
+    int fullChargeMah = -1;
+    int designCapacityMah = 10000;
     double temperatureC = -273.15;
     QString batteryStatus;
     QString batteryHealth;
@@ -320,6 +464,9 @@ QVariantMap collectStatus(const QString &scope)
             if (readInteger(base + QStringLiteral("/capacity"), &raw)) batteryPercent = qBound(0, static_cast<int>(raw), 100);
             if (readInteger(base + QStringLiteral("/voltage_now"), &raw)) voltageMv = static_cast<int>(raw / 1000);
             if (readInteger(base + QStringLiteral("/current_now"), &raw)) currentMa = static_cast<int>(raw / 1000);
+            if (readInteger(base + QStringLiteral("/charge_now"), &raw)) remainingMah = static_cast<int>(raw / 1000);
+            if (readInteger(base + QStringLiteral("/charge_full"), &raw)) fullChargeMah = static_cast<int>(raw / 1000);
+            if (readInteger(base + QStringLiteral("/charge_full_design"), &raw)) designCapacityMah = static_cast<int>(raw / 1000);
             if (readInteger(base + QStringLiteral("/temp"), &raw)
                     || readInteger(base + QStringLiteral("/temp_now"), &raw)
                     || readInteger(base + QStringLiteral("/temperature"), &raw)) {
@@ -349,6 +496,15 @@ QVariantMap collectStatus(const QString &scope)
     quint8 chargerFault = 0;
     chargerAvailable = readI2cRegister(0x6b, 0x08, &chargerStatus, 1);
     if (chargerAvailable) {
+        quint8 configuredInput = 0;
+        quint8 configuredCharge = 0;
+        const bool chargeCurrentConfigured = configureSgm41511ChargeCurrent(&configuredInput,
+                                                                            &configuredCharge);
+        result.insert(QStringLiteral("chargerCurrentConfigured"), chargeCurrentConfigured);
+        result.insert(QStringLiteral("chargerInputLimitMa"),
+                      chargeCurrentConfigured ? 100 + (configuredInput & 0x1f) * 100 : -1);
+        result.insert(QStringLiteral("chargerFastCurrentMa"),
+                      chargeCurrentConfigured ? (configuredCharge & 0x3f) * 60 : -1);
         externalPowerPresent = chargerStatus & 0x04;
         const int chargeState = (chargerStatus >> 3) & 0x03;
         if (chargeState == 1 || chargeState == 2) batteryStatus = QStringLiteral("Charging");
@@ -369,7 +525,8 @@ QVariantMap collectStatus(const QString &scope)
     quint16 gaugeVoltage = 0;
     quint16 gaugeCurrent = 0;
     quint16 gaugeSoc = 0;
-    if (readI2cWord(0x55, 0x06, &gaugeTemperature)) {
+    const bool gaugeCommunication = readI2cWord(0x55, 0x06, &gaugeTemperature);
+    if (gaugeCommunication) {
         batteryAvailable = true;
         temperatureC = gaugeTemperature / 10.0 - 273.15;
         if (readI2cWord(0x55, 0x08, &gaugeVoltage)) voltageMv = gaugeVoltage;
@@ -389,13 +546,20 @@ QVariantMap collectStatus(const QString &scope)
     result.insert(QStringLiteral("chargeTemperatureZone"), chargeTemperatureZone);
     result.insert(QStringLiteral("batteryVoltageMv"), voltageMv);
     result.insert(QStringLiteral("batteryCurrentMa"), currentMa);
+    result.insert(QStringLiteral("batteryRawVoltageMv"), voltageMv);
+    result.insert(QStringLiteral("batteryRawCurrentMa"), currentMa);
+    result.insert(QStringLiteral("batteryRemainingMah"), remainingMah);
+    result.insert(QStringLiteral("batteryFullChargeMah"), fullChargeMah);
+    result.insert(QStringLiteral("batteryDesignCapacityMah"), designCapacityMah > 0 ? designCapacityMah : 10000);
+    result.insert(QStringLiteral("gaugeCommunication"), gaugeCommunication);
+    result.insert(QStringLiteral("gaugeError"), gaugeCommunication ? QString() : QStringLiteral("BQ27220 I²C 无响应或未加载驱动"));
 
     const QString cards = readTextFile(QStringLiteral("/proc/asound/cards"));
     const bool audioAvailable = cards.contains(QStringLiteral("Meow Speaker"), Qt::CaseInsensitive)
             || cards.contains(QStringLiteral("meow-speaker"), Qt::CaseInsensitive)
             || cards.contains(QStringLiteral("simple-card"), Qt::CaseInsensitive);
     int volumePercent = -1;
-    if (scope == QStringLiteral("sound")) {
+    if (audioAvailable) {
         const QRegularExpression percentExpression(QStringLiteral("\\[(\\d{1,3})%\\]"));
         for (const QString &control : {QStringLiteral("Speaker"), QStringLiteral("Meow")}) {
             const QString output = runProcess(QStringLiteral("amixer"),
@@ -570,11 +734,96 @@ QVariantMap runWifiOperation(const QString &operation, const QString &ssid, cons
     return result;
 }
 
+QVariantMap runEthernetConfiguration(const QString &interfaceName, const QString &requestedConnection,
+                                     const QString &method, const QString &address, int prefix,
+                                     const QString &gateway, const QString &dns)
+{
+    QVariantMap result;
+    result.insert(QStringLiteral("interface"), interfaceName);
+    if (interfaceName != QStringLiteral("eth0") && interfaceName != QStringLiteral("eth1")) {
+        result.insert(QStringLiteral("ok"), false);
+        result.insert(QStringLiteral("message"), QStringLiteral("无效的有线网络接口"));
+        return result;
+    }
+    const bool manual = method == QStringLiteral("manual");
+    if (manual && (address.trimmed().isEmpty() || prefix < 1 || prefix > 32)) {
+        result.insert(QStringLiteral("ok"), false);
+        result.insert(QStringLiteral("message"), QStringLiteral("请填写有效的 IPv4 地址和前缀长度"));
+        return result;
+    }
+
+    QString connectionName = requestedConnection.trimmed();
+    ProcessResult operation;
+    if (connectionName.isEmpty()) {
+        connectionName = QStringLiteral("Meow %1").arg(interfaceName);
+        operation = runProcessDetailed(QStringLiteral("nmcli"),
+                                       {QStringLiteral("connection"), QStringLiteral("add"),
+                                        QStringLiteral("type"), QStringLiteral("ethernet"),
+                                        QStringLiteral("ifname"), interfaceName,
+                                        QStringLiteral("con-name"), connectionName}, 8000);
+        if (!operation.ok()) {
+            result.insert(QStringLiteral("ok"), false);
+            result.insert(QStringLiteral("message"), QStringLiteral("无法创建有线网络配置"));
+            return result;
+        }
+    }
+
+    QStringList arguments{QStringLiteral("connection"), QStringLiteral("modify"),
+                          QStringLiteral("id"), connectionName, QStringLiteral("ipv4.method"),
+                          manual ? QStringLiteral("manual") : QStringLiteral("auto")};
+    if (manual) {
+        arguments << QStringLiteral("ipv4.addresses")
+                  << address.trimmed() + QLatin1Char('/') + QString::number(prefix)
+                  << QStringLiteral("ipv4.gateway") << gateway.trimmed()
+                  << QStringLiteral("ipv4.dns") << dns.trimmed();
+    } else {
+        arguments << QStringLiteral("ipv4.addresses") << QString()
+                  << QStringLiteral("ipv4.gateway") << QString()
+                  << QStringLiteral("ipv4.dns") << QString();
+    }
+    operation = runProcessDetailed(QStringLiteral("nmcli"), arguments, 8000);
+    if (!operation.ok()) {
+        result.insert(QStringLiteral("ok"), false);
+        result.insert(QStringLiteral("message"), QStringLiteral("应用有线网络配置失败"));
+        return result;
+    }
+    const ProcessResult activation = runProcessDetailed(QStringLiteral("nmcli"),
+                                                         {QStringLiteral("connection"), QStringLiteral("up"),
+                                                          QStringLiteral("id"), connectionName,
+                                                          QStringLiteral("ifname"), interfaceName}, 30000);
+    result.insert(QStringLiteral("ok"), true);
+    result.insert(QStringLiteral("message"), activation.ok()
+                  ? QStringLiteral("有线网络配置已应用")
+                  : QStringLiteral("配置已保存，等待网线连接"));
+    return result;
+}
+
+QVariantMap runEthernetLinkOperation(const QString &interfaceName, bool connect)
+{
+    QVariantMap result;
+    result.insert(QStringLiteral("interface"), interfaceName);
+    const ProcessResult operation = runProcessDetailed(QStringLiteral("nmcli"),
+                                                        {QStringLiteral("device"),
+                                                         connect ? QStringLiteral("connect") : QStringLiteral("disconnect"),
+                                                         interfaceName}, connect ? 30000 : 8000);
+    result.insert(QStringLiteral("ok"), operation.ok());
+    result.insert(QStringLiteral("message"), operation.ok()
+                  ? (connect ? QStringLiteral("网口已连接") : QStringLiteral("网口已断开"))
+                  : (connect ? QStringLiteral("网口连接失败") : QStringLiteral("网口断开失败")));
+    return result;
+}
+
 } // namespace
 
 SystemBackend::SystemBackend(QObject *parent)
-    : QObject(parent), m_statusWatcher(this), m_wifiScanWatcher(this), m_wifiOperationWatcher(this)
+    : QObject(parent), m_statusWatcher(this), m_wifiScanWatcher(this), m_wifiOperationWatcher(this),
+      m_ethernetOperationWatcher(this)
 {
+    m_hardwareCapabilities = detectHardwareCapabilities(&m_boardProfile);
+    QSettings calibration(QStringLiteral("Meow OS"), QStringLiteral("battery"));
+    m_batteryCalibrationStatus = calibration.value(QStringLiteral("status"), QStringLiteral("未校准")).toString();
+    m_batteryCalibrationSummary = calibration.value(QStringLiteral("summary")).toString();
+    m_batteryDesignCapacityMah = calibration.value(QStringLiteral("designCapacityMah"), 10000).toInt();
     m_lastInputMs = QDateTime::currentMSecsSinceEpoch();
     if (qApp) qApp->installEventFilter(this);
     m_volumeSetTimer.setSingleShot(true);
@@ -630,6 +879,14 @@ SystemBackend::SystemBackend(QObject *parent)
         refreshStatus();
         scanWifi();
     });
+    connect(&m_ethernetOperationWatcher, &QFutureWatcher<QVariantMap>::finished, this, [this]() {
+        const QVariantMap result = m_ethernetOperationWatcher.result();
+        const bool ok = result.value(QStringLiteral("ok")).toBool();
+        m_ethernetOperationInterface.clear();
+        emit ethernetChanged();
+        emit operationMessage(result.value(QStringLiteral("message")).toString(), ok);
+        refreshStatus();
+    });
     refresh();
 }
 
@@ -659,6 +916,8 @@ QString SystemBackend::wifiOperationSsid() const { return m_wifiOperationSsid; }
 QString SystemBackend::wifiScanError() const { return m_wifiScanError; }
 QVariantList SystemBackend::wifiNetworks() const { return m_wifiNetworks; }
 QVariantList SystemBackend::ethernetPorts() const { return m_ethernetPorts; }
+bool SystemBackend::ethernetOperating() const { return m_ethernetOperationWatcher.isRunning(); }
+QString SystemBackend::ethernetOperationInterface() const { return m_ethernetOperationInterface; }
 bool SystemBackend::batteryAvailable() const { return m_batteryAvailable; }
 int SystemBackend::batteryPercent() const { return m_batteryPercent; }
 QString SystemBackend::batteryStatus() const { return m_batteryStatus; }
@@ -675,16 +934,38 @@ double SystemBackend::batteryPowerW() const
     if (!m_batteryAvailable || m_batteryVoltageMv < 0) return -1.0;
     return qAbs(static_cast<double>(m_batteryVoltageMv) * m_batteryCurrentMa) / 1000000.0;
 }
+
+int SystemBackend::batteryRawVoltageMv() const { return m_batteryRawVoltageMv; }
+int SystemBackend::batteryRawCurrentMa() const { return m_batteryRawCurrentMa; }
+int SystemBackend::batteryRemainingMah() const { return m_batteryRemainingMah; }
+int SystemBackend::batteryFullChargeMah() const { return m_batteryFullChargeMah; }
+int SystemBackend::batteryDesignCapacityMah() const { return m_batteryDesignCapacityMah; }
+bool SystemBackend::gaugeCommunication() const { return m_gaugeCommunication; }
+QString SystemBackend::gaugeError() const { return m_gaugeError; }
+QString SystemBackend::batteryCalibrationStatus() const { return m_batteryCalibrationStatus; }
+QString SystemBackend::batteryCalibrationSummary() const { return m_batteryCalibrationSummary; }
+QString SystemBackend::boardProfile() const { return m_boardProfile; }
+QVariantMap SystemBackend::hardwareCapabilities() const { return m_hardwareCapabilities; }
 int SystemBackend::volumePercent() const { return m_volumePercent; }
 bool SystemBackend::audioAvailable() const { return m_audioAvailable; }
 int SystemBackend::displayBrightnessPercent() const { return m_displayBrightnessPercent; }
 bool SystemBackend::brightnessAvailable() const { return m_brightnessAvailable; }
 int SystemBackend::cpuTotal() const { return m_cpuTotal; }
 QVariantList SystemBackend::cpuUsage() const { return m_cpuUsage; }
+QVariantList SystemBackend::cpuFrequencies() const { return m_cpuFrequencies; }
 int SystemBackend::gpuUsage() const { return m_gpuUsage; }
+double SystemBackend::cpuTemperatureC() const { return m_cpuTemperatureC; }
+int SystemBackend::cpuFrequencyMhz() const { return m_cpuFrequencyMhz; }
+int SystemBackend::cpuMaxFrequencyMhz() const { return m_cpuMaxFrequencyMhz; }
+int SystemBackend::gpuFrequencyMhz() const { return m_gpuFrequencyMhz; }
+QString SystemBackend::loadAverage() const { return m_loadAverage; }
+QString SystemBackend::uptime() const { return m_uptime; }
+int SystemBackend::processCount() const { return m_processCount; }
 int SystemBackend::memoryPercent() const { return m_memoryPercent; }
 QString SystemBackend::memoryUsed() const { return formatBytes(m_memoryUsedBytes); }
+QString SystemBackend::memoryAvailable() const { return formatBytes(m_memoryAvailableBytes); }
 QString SystemBackend::memoryTotal() const { return formatBytes(m_memoryTotalBytes); }
+QVariantList SystemBackend::performanceHistory() const { return m_performanceHistory; }
 
 int SystemBackend::displayRotation() const
 {
@@ -749,16 +1030,18 @@ void SystemBackend::refreshPerformance()
     QVector<quint64> total;
     QFile statFile(QStringLiteral("/proc/stat"));
     if (statFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        while (!statFile.atEnd()) {
-            const QByteArray line = statFile.readLine().trimmed();
+        while (true) {
+            const QByteArray rawLine = statFile.readLine();
+            if (rawLine.isEmpty()) break;
+            const QByteArray line = rawLine.trimmed();
             if (!line.startsWith("cpu")) continue;
             parseCpuLine(line, &idle, &total);
         }
     }
-    if (idle.isEmpty() || total.isEmpty() || idle.size() != total.size()) return;
-
     QVariantList usage;
-    if (m_cpuHavePrev && m_cpuPrevIdle.size() == idle.size()) {
+    const bool cpuSampleValid = !idle.isEmpty() && idle.size() == total.size();
+    if (cpuSampleValid && m_cpuHavePrev && m_cpuPrevIdle.size() == idle.size()
+            && m_cpuPrevTotal.size() == total.size()) {
         for (int i = 0; i < idle.size(); ++i) {
             const qint64 idleDelta = static_cast<qint64>(idle.at(i) - m_cpuPrevIdle.at(i));
             const qint64 totalDelta = static_cast<qint64>(total.at(i) - m_cpuPrevTotal.at(i));
@@ -767,12 +1050,14 @@ void SystemBackend::refreshPerformance()
                     : 0;
             usage.append(percent);
         }
-    } else {
+    } else if (cpuSampleValid) {
         for (int i = 0; i < idle.size(); ++i) usage.append(0);
     }
-    m_cpuHavePrev = true;
-    m_cpuPrevIdle = idle;
-    m_cpuPrevTotal = total;
+    if (cpuSampleValid) {
+        m_cpuHavePrev = true;
+        m_cpuPrevIdle = idle;
+        m_cpuPrevTotal = total;
+    }
     const int cpuTotal = usage.isEmpty() ? -1 : usage.at(0).toInt();
 
     int gpu = -1;
@@ -783,32 +1068,148 @@ void SystemBackend::refreshPerformance()
         const int parsed = parseGpuBusy(text);
         if (parsed >= 0) { gpu = parsed; break; }
     }
+    int gpuFrequencyMhz = -1;
+    const QDir devfreq(QStringLiteral("/sys/class/devfreq"));
+    for (const QString &entry : devfreq.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name)) {
+        const QString base = devfreq.absoluteFilePath(entry);
+        const QString deviceName = readTextFile(base + QStringLiteral("/name")).toLower();
+        if (!entry.contains(QStringLiteral("gpu"), Qt::CaseInsensitive)
+                && !deviceName.contains(QStringLiteral("gpu"))) continue;
+        qint64 gpuFrequencyHz = 0;
+        if (readInteger(base + QStringLiteral("/cur_freq"), &gpuFrequencyHz) && gpuFrequencyHz > 0)
+            gpuFrequencyMhz = static_cast<int>(gpuFrequencyHz / 1000000);
+        if (gpu < 0) {
+            const QString load = readTextFile(base + QStringLiteral("/load"));
+            const QStringList fields = load.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+            bool firstOk = false;
+            QString firstField = fields.value(0);
+            firstField.remove(QLatin1Char('%'));
+            const qint64 first = firstField.toLongLong(&firstOk);
+            if (firstOk && fields.size() == 1 && first >= 0 && first <= 100) {
+                gpu = static_cast<int>(first);
+            } else if (firstOk && fields.size() >= 2) {
+                bool secondOk = false;
+                const qint64 second = fields.at(1).toLongLong(&secondOk);
+                if (secondOk && second > 0 && first >= 0 && first <= second)
+                    gpu = qBound(0, static_cast<int>(100.0 * first / second), 100);
+            }
+        }
+        break;
+    }
+
+    double cpuTemperature = -273.15;
+    const QDir thermal(QStringLiteral("/sys/class/thermal"));
+    const QStringList thermalZones = thermal.entryList(QStringList{QStringLiteral("thermal_zone*")},
+                                                       QDir::Dirs, QDir::Name);
+    for (const QString &zone : thermalZones) {
+        const QString base = thermal.absoluteFilePath(zone);
+        const QString type = readTextFile(base + QStringLiteral("/type")).toLower();
+        if (!type.contains(QStringLiteral("cpu")) && !type.contains(QStringLiteral("soc"))) continue;
+        qint64 raw = 0;
+        if (readInteger(base + QStringLiteral("/temp"), &raw)) {
+            cpuTemperature = normalizeTemperature(raw);
+            break;
+        }
+    }
+
+    qint64 frequencyKhz = 0;
+    int cpuFrequencyMhz = -1;
+    if (readInteger(QStringLiteral("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq"), &frequencyKhz)
+            && frequencyKhz > 0) {
+        cpuFrequencyMhz = static_cast<int>(frequencyKhz / 1000);
+    }
+    qint64 maxFrequencyKhz = 0;
+    int cpuMaxFrequencyMhz = -1;
+    if ((readInteger(QStringLiteral("/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq"), &maxFrequencyKhz)
+         || readInteger(QStringLiteral("/sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq"), &maxFrequencyKhz))
+            && maxFrequencyKhz > 0) {
+        cpuMaxFrequencyMhz = static_cast<int>(maxFrequencyKhz / 1000);
+    }
+    QVariantList cpuFrequencies;
+    const int logicalCoreCount = cpuSampleValid ? qMax(0, idle.size() - 1) : 0;
+    for (int core = 0; core < logicalCoreCount; ++core) {
+        qint64 coreFrequencyKhz = 0;
+        const QString path = QStringLiteral("/sys/devices/system/cpu/cpu%1/cpufreq/scaling_cur_freq").arg(core);
+        cpuFrequencies.append(readInteger(path, &coreFrequencyKhz) && coreFrequencyKhz > 0
+                              ? static_cast<int>(coreFrequencyKhz / 1000) : -1);
+    }
+
+    QString loadAverage;
+    const QStringList loadFields = readTextFile(QStringLiteral("/proc/loadavg"))
+            .split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+    if (loadFields.size() >= 3)
+        loadAverage = loadFields.at(0) + QStringLiteral(" · ") + loadFields.at(1) + QStringLiteral(" · ") + loadFields.at(2);
+
+    QString uptime;
+    bool uptimeOk = false;
+    const qint64 uptimeSeconds = readTextFile(QStringLiteral("/proc/uptime"))
+            .section(QLatin1Char(' '), 0, 0).toDouble(&uptimeOk);
+    if (uptimeOk && uptimeSeconds >= 0) {
+        const qint64 days = uptimeSeconds / 86400;
+        const qint64 hours = (uptimeSeconds % 86400) / 3600;
+        const qint64 minutes = (uptimeSeconds % 3600) / 60;
+        uptime = days > 0
+                ? QStringLiteral("%1 天 %2 小时").arg(days).arg(hours)
+                : QStringLiteral("%1 小时 %2 分钟").arg(hours).arg(minutes);
+    }
+
+    int processCount = 0;
+    const QDir proc(QStringLiteral("/proc"));
+    for (const QString &entry : proc.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name)) {
+        bool numeric = false;
+        entry.toInt(&numeric);
+        if (numeric) ++processCount;
+    }
 
     qint64 memTotal = 0;
     qint64 memAvailable = 0;
     QFile memInfo(QStringLiteral("/proc/meminfo"));
     if (memInfo.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        while (!memInfo.atEnd()) {
-            const QString line = QString::fromLatin1(memInfo.readLine().trimmed());
-            if (line.startsWith(QStringLiteral("MemTotal"))) memTotal = line.section(QLatin1Char(' '), -2, -2).toLongLong();
-            else if (line.startsWith(QStringLiteral("MemAvailable"))) memAvailable = line.section(QLatin1Char(' '), -2, -2).toLongLong();
+        while (true) {
+            const QByteArray line = memInfo.readLine();
+            if (line.isEmpty()) break;
+            long long value = 0;
+            if (line.startsWith("MemTotal:")
+                    && std::sscanf(line.constData(), "MemTotal: %lld", &value) == 1) {
+                memTotal = value;
+            } else if (line.startsWith("MemAvailable:")
+                       && std::sscanf(line.constData(), "MemAvailable: %lld", &value) == 1) {
+                memAvailable = value;
+            }
             if (memTotal > 0 && memAvailable > 0) break;
         }
     }
+    // /proc/meminfo reports kB while the UI byte formatter expects bytes.
+    memTotal *= 1024;
+    memAvailable *= 1024;
     const qint64 memUsed = qMax<qint64>(0, memTotal - memAvailable);
     const int memPercent = memTotal > 0 ? qBound(0, static_cast<int>(100.0 * memUsed / memTotal), 100) : -1;
 
-    if (cpuTotal != m_cpuTotal || usage != m_cpuUsage || gpu != m_gpuUsage
-            || memPercent != m_memoryPercent || memUsed != m_memoryUsedBytes
-            || memTotal != m_memoryTotalBytes) {
-        m_cpuTotal = cpuTotal;
-        m_cpuUsage = usage;
-        m_gpuUsage = gpu;
-        m_memoryPercent = memPercent;
-        m_memoryUsedBytes = memUsed;
-        m_memoryTotalBytes = memTotal;
-        emit performanceChanged();
-    }
+    QVariantMap sample;
+    sample.insert(QStringLiteral("cpu"), cpuTotal);
+    sample.insert(QStringLiteral("gpu"), gpu);
+    sample.insert(QStringLiteral("memory"), memPercent);
+    sample.insert(QStringLiteral("memoryUsed"), memUsed);
+    sample.insert(QStringLiteral("memoryTotal"), memTotal);
+    if (m_performanceHistory.size() >= 60) m_performanceHistory.removeFirst();
+    m_performanceHistory.append(sample);
+
+    m_cpuTotal = cpuTotal;
+    m_cpuUsage = usage;
+    m_cpuFrequencies = cpuFrequencies;
+    m_gpuUsage = gpu;
+    m_cpuTemperatureC = cpuTemperature;
+    m_cpuFrequencyMhz = cpuFrequencyMhz;
+    m_cpuMaxFrequencyMhz = cpuMaxFrequencyMhz;
+    m_gpuFrequencyMhz = gpuFrequencyMhz;
+    m_loadAverage = loadAverage;
+    m_uptime = uptime;
+    m_processCount = processCount;
+    m_memoryPercent = memPercent;
+    m_memoryUsedBytes = memUsed;
+    m_memoryAvailableBytes = memAvailable;
+    m_memoryTotalBytes = memTotal;
+    emit performanceChanged();
 }
 
 void SystemBackend::refreshSystem()
@@ -838,6 +1239,15 @@ void SystemBackend::refreshStorage()
     QString nvmeUsed;
     QString nvmeTotal;
     int nvmePercent = 0;
+
+    QStorageInfo dataStorage(QStringLiteral("/data"));
+    if (dataStorage.isValid() && dataStorage.isReady() && dataStorage.bytesTotal() > 0) {
+        nvmeMounted = true;
+        nvmeMountPoint = QStringLiteral("/data");
+        nvmeUsed = formatBytes(dataStorage.bytesTotal() - dataStorage.bytesAvailable());
+        nvmeTotal = formatBytes(dataStorage.bytesTotal());
+        nvmePercent = qBound(0, static_cast<int>(100.0 * (dataStorage.bytesTotal() - dataStorage.bytesAvailable()) / dataStorage.bytesTotal()), 100);
+    }
 
     QDir sysBlock(QStringLiteral("/sys/block"));
     sysBlock.setNameFilters({QStringLiteral("nvme*n*")});
@@ -889,7 +1299,7 @@ void SystemBackend::refreshStorage()
 void SystemBackend::applyStatusSnapshot(const QVariantMap &snapshot)
 {
     if (snapshot.contains(QStringLiteral("wifiName"))) {
-        const QString wifiName = snapshot.value(QStringLiteral("wifiName")).toString();
+        QString wifiName = snapshot.value(QStringLiteral("wifiName")).toString();
         QString wifiIpv4 = m_wifiIpv4;
         QString wifiGateway = m_wifiGateway;
         QString wifiMac = m_wifiMac;
@@ -898,6 +1308,16 @@ void SystemBackend::applyStatusSnapshot(const QVariantMap &snapshot)
         if (snapshot.contains(QStringLiteral("wifiGateway"))) wifiGateway = snapshot.value(QStringLiteral("wifiGateway")).toString();
         if (snapshot.contains(QStringLiteral("wifiMac"))) wifiMac = snapshot.value(QStringLiteral("wifiMac")).toString();
         if (snapshot.contains(QStringLiteral("wifiDevice"))) wifiDevice = snapshot.value(QStringLiteral("wifiDevice")).toString();
+        if (wifiName.isEmpty() && !m_wifiName.isEmpty()) {
+            ++m_wifiEmptyPollCount;
+            if (m_wifiEmptyPollCount < 2) wifiName = m_wifiName;
+            else {
+                wifiIpv4.clear();
+                wifiGateway.clear();
+            }
+        } else {
+            m_wifiEmptyPollCount = 0;
+        }
         if (wifiName != m_wifiName || wifiIpv4 != m_wifiIpv4 || wifiGateway != m_wifiGateway
                 || wifiMac != m_wifiMac || wifiDevice != m_wifiDevice) {
             m_wifiName = wifiName;
@@ -919,6 +1339,13 @@ void SystemBackend::applyStatusSnapshot(const QVariantMap &snapshot)
     const QString chargeTemperatureZone = snapshot.value(QStringLiteral("chargeTemperatureZone")).toString();
     const int batteryVoltageMv = snapshot.value(QStringLiteral("batteryVoltageMv"), -1).toInt();
     const int batteryCurrentMa = snapshot.value(QStringLiteral("batteryCurrentMa")).toInt();
+    const int batteryRawVoltageMv = snapshot.value(QStringLiteral("batteryRawVoltageMv"), -1).toInt();
+    const int batteryRawCurrentMa = snapshot.value(QStringLiteral("batteryRawCurrentMa")).toInt();
+    const int batteryRemainingMah = snapshot.value(QStringLiteral("batteryRemainingMah"), -1).toInt();
+    const int batteryFullChargeMah = snapshot.value(QStringLiteral("batteryFullChargeMah"), -1).toInt();
+    const int batteryDesignCapacityMah = snapshot.value(QStringLiteral("batteryDesignCapacityMah"), 10000).toInt();
+    const bool gaugeCommunication = snapshot.value(QStringLiteral("gaugeCommunication")).toBool();
+    const QString gaugeError = snapshot.value(QStringLiteral("gaugeError")).toString();
     const QString batteryHealth = snapshot.value(QStringLiteral("batteryHealth")).toString();
     if (batteryAvailable != m_batteryAvailable || batteryPercent != m_batteryPercent
             || batteryStatus != m_batteryStatus || batteryCharging != m_batteryCharging
@@ -937,6 +1364,19 @@ void SystemBackend::applyStatusSnapshot(const QVariantMap &snapshot)
         m_batteryVoltageMv = batteryVoltageMv;
         m_batteryCurrentMa = batteryCurrentMa;
         m_batteryHealth = batteryHealth;
+        emit powerChanged();
+    }
+    if (batteryRawVoltageMv != m_batteryRawVoltageMv || batteryRawCurrentMa != m_batteryRawCurrentMa
+            || batteryRemainingMah != m_batteryRemainingMah || batteryFullChargeMah != m_batteryFullChargeMah
+            || batteryDesignCapacityMah != m_batteryDesignCapacityMah
+            || gaugeCommunication != m_gaugeCommunication || gaugeError != m_gaugeError) {
+        m_batteryRawVoltageMv = batteryRawVoltageMv;
+        m_batteryRawCurrentMa = batteryRawCurrentMa;
+        m_batteryRemainingMah = batteryRemainingMah;
+        m_batteryFullChargeMah = batteryFullChargeMah;
+        m_batteryDesignCapacityMah = batteryDesignCapacityMah > 0 ? batteryDesignCapacityMah : 10000;
+        m_gaugeCommunication = gaugeCommunication;
+        m_gaugeError = gaugeError;
         emit powerChanged();
     }
 
@@ -1001,6 +1441,28 @@ void SystemBackend::forgetWifi(const QString &ssid)
     }
 }
 
+void SystemBackend::configureEthernet(const QString &interfaceName, const QString &connectionName,
+                                      const QString &method, const QString &address, int prefix,
+                                      const QString &gateway, const QString &dns)
+{
+    if (m_ethernetOperationWatcher.isRunning()) return;
+    m_ethernetOperationInterface = interfaceName;
+    emit ethernetChanged();
+    m_ethernetOperationWatcher.setFuture(QtConcurrent::run([=]() {
+        return runEthernetConfiguration(interfaceName, connectionName, method,
+                                        address, prefix, gateway, dns);
+    }));
+}
+
+void SystemBackend::setEthernetConnected(const QString &interfaceName, bool connected)
+{
+    if (m_ethernetOperationWatcher.isRunning()) return;
+    m_ethernetOperationInterface = interfaceName;
+    emit ethernetChanged();
+    m_ethernetOperationWatcher.setFuture(QtConcurrent::run(runEthernetLinkOperation,
+                                                            interfaceName, connected));
+}
+
 void SystemBackend::setVolume(int percent)
 {
     m_pendingVolumePercent = qBound(0, percent, 100);
@@ -1033,4 +1495,58 @@ void SystemBackend::setDisplayBrightness(int percent)
         emit displayChanged();
     }
     m_brightnessSetTimer.start();
+}
+
+bool SystemBackend::calibrateBattery(int referenceVoltageMv, int referenceCurrentMa,
+                                     int designCapacityMah, bool stable)
+{
+    if (!m_batteryAvailable || !m_gaugeCommunication) {
+        m_batteryCalibrationStatus = QStringLiteral("失败：BQ27220 未连接");
+        m_batteryCalibrationSummary = m_gaugeError;
+        emit powerChanged();
+        return false;
+    }
+    if (!stable || referenceVoltageMv < 3000 || referenceVoltageMv > 4300
+            || referenceCurrentMa < -10000 || referenceCurrentMa > 10000
+            || designCapacityMah < 1000 || designCapacityMah > 30000) {
+        m_batteryCalibrationStatus = QStringLiteral("失败：参考值或稳定条件不满足");
+        m_batteryCalibrationSummary = QStringLiteral("要求：电压3000–4300mV、电流±10000mA、容量1000–30000mAh，并保持静置稳定");
+        emit powerChanged();
+        return false;
+    }
+    const int voltageOffset = referenceVoltageMv - m_batteryRawVoltageMv;
+    const int currentOffset = referenceCurrentMa - m_batteryRawCurrentMa;
+    const QString timestamp = QDateTime::currentDateTime().toString(Qt::ISODate);
+    QSettings calibration(QStringLiteral("Meow OS"), QStringLiteral("battery"));
+    calibration.setValue(QStringLiteral("status"), QStringLiteral("已记录（软件校准）"));
+    calibration.setValue(QStringLiteral("timestamp"), timestamp);
+    calibration.setValue(QStringLiteral("referenceVoltageMv"), referenceVoltageMv);
+    calibration.setValue(QStringLiteral("referenceCurrentMa"), referenceCurrentMa);
+    calibration.setValue(QStringLiteral("rawVoltageMv"), m_batteryRawVoltageMv);
+    calibration.setValue(QStringLiteral("rawCurrentMa"), m_batteryRawCurrentMa);
+    calibration.setValue(QStringLiteral("voltageOffsetMv"), voltageOffset);
+    calibration.setValue(QStringLiteral("currentOffsetMa"), currentOffset);
+    calibration.setValue(QStringLiteral("designCapacityMah"), designCapacityMah);
+    const auto signedNumber = [](int value) {
+        return (value >= 0 ? QStringLiteral("+") : QString()) + QString::number(value);
+    };
+    const QString summary = QStringLiteral("电压偏差 %1 mV · 电流偏差 %2 mA · %3")
+            .arg(signedNumber(voltageOffset)).arg(signedNumber(currentOffset)).arg(timestamp);
+    calibration.setValue(QStringLiteral("summary"), summary);
+    calibration.setValue(QStringLiteral("writesToGauge"), false);
+    m_batteryDesignCapacityMah = designCapacityMah;
+    m_batteryCalibrationStatus = QStringLiteral("已记录（未写入BQ）");
+    m_batteryCalibrationSummary = summary;
+    emit powerChanged();
+    return true;
+}
+
+void SystemBackend::clearBatteryCalibration()
+{
+    QSettings calibration(QStringLiteral("Meow OS"), QStringLiteral("battery"));
+    calibration.clear();
+    m_batteryCalibrationStatus = QStringLiteral("未校准");
+    m_batteryCalibrationSummary.clear();
+    m_batteryDesignCapacityMah = 10000;
+    emit powerChanged();
 }

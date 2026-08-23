@@ -38,6 +38,8 @@ class SystemBackend final : public QObject
     Q_PROPERTY(QString wifiScanError READ wifiScanError NOTIFY wifiChanged)
     Q_PROPERTY(QVariantList wifiNetworks READ wifiNetworks NOTIFY wifiChanged)
     Q_PROPERTY(QVariantList ethernetPorts READ ethernetPorts NOTIFY ethernetChanged)
+    Q_PROPERTY(bool ethernetOperating READ ethernetOperating NOTIFY ethernetChanged)
+    Q_PROPERTY(QString ethernetOperationInterface READ ethernetOperationInterface NOTIFY ethernetChanged)
     Q_PROPERTY(bool batteryAvailable READ batteryAvailable NOTIFY powerChanged)
     Q_PROPERTY(int batteryPercent READ batteryPercent NOTIFY powerChanged)
     Q_PROPERTY(QString batteryStatus READ batteryStatus NOTIFY powerChanged)
@@ -50,16 +52,37 @@ class SystemBackend final : public QObject
     Q_PROPERTY(int batteryCurrentMa READ batteryCurrentMa NOTIFY powerChanged)
     Q_PROPERTY(QString batteryHealth READ batteryHealth NOTIFY powerChanged)
     Q_PROPERTY(double batteryPowerW READ batteryPowerW NOTIFY powerChanged)
+    Q_PROPERTY(int batteryRawVoltageMv READ batteryRawVoltageMv NOTIFY powerChanged)
+    Q_PROPERTY(int batteryRawCurrentMa READ batteryRawCurrentMa NOTIFY powerChanged)
+    Q_PROPERTY(int batteryRemainingMah READ batteryRemainingMah NOTIFY powerChanged)
+    Q_PROPERTY(int batteryFullChargeMah READ batteryFullChargeMah NOTIFY powerChanged)
+    Q_PROPERTY(int batteryDesignCapacityMah READ batteryDesignCapacityMah NOTIFY powerChanged)
+    Q_PROPERTY(bool gaugeCommunication READ gaugeCommunication NOTIFY powerChanged)
+    Q_PROPERTY(QString gaugeError READ gaugeError NOTIFY powerChanged)
+    Q_PROPERTY(QString batteryCalibrationStatus READ batteryCalibrationStatus NOTIFY powerChanged)
+    Q_PROPERTY(QString batteryCalibrationSummary READ batteryCalibrationSummary NOTIFY powerChanged)
+    Q_PROPERTY(QString boardProfile READ boardProfile CONSTANT)
+    Q_PROPERTY(QVariantMap hardwareCapabilities READ hardwareCapabilities CONSTANT)
     Q_PROPERTY(int volumePercent READ volumePercent NOTIFY audioChanged)
     Q_PROPERTY(bool audioAvailable READ audioAvailable NOTIFY audioChanged)
     Q_PROPERTY(int displayBrightnessPercent READ displayBrightnessPercent NOTIFY displayChanged)
     Q_PROPERTY(bool brightnessAvailable READ brightnessAvailable NOTIFY displayChanged)
     Q_PROPERTY(int cpuTotal READ cpuTotal NOTIFY performanceChanged)
     Q_PROPERTY(QVariantList cpuUsage READ cpuUsage NOTIFY performanceChanged)
+    Q_PROPERTY(QVariantList cpuFrequencies READ cpuFrequencies NOTIFY performanceChanged)
     Q_PROPERTY(int gpuUsage READ gpuUsage NOTIFY performanceChanged)
+    Q_PROPERTY(double cpuTemperatureC READ cpuTemperatureC NOTIFY performanceChanged)
+    Q_PROPERTY(int cpuFrequencyMhz READ cpuFrequencyMhz NOTIFY performanceChanged)
+    Q_PROPERTY(int cpuMaxFrequencyMhz READ cpuMaxFrequencyMhz NOTIFY performanceChanged)
+    Q_PROPERTY(int gpuFrequencyMhz READ gpuFrequencyMhz NOTIFY performanceChanged)
+    Q_PROPERTY(QString loadAverage READ loadAverage NOTIFY performanceChanged)
+    Q_PROPERTY(QString uptime READ uptime NOTIFY performanceChanged)
+    Q_PROPERTY(int processCount READ processCount NOTIFY performanceChanged)
     Q_PROPERTY(int memoryPercent READ memoryPercent NOTIFY performanceChanged)
     Q_PROPERTY(QString memoryUsed READ memoryUsed NOTIFY performanceChanged)
+    Q_PROPERTY(QString memoryAvailable READ memoryAvailable NOTIFY performanceChanged)
     Q_PROPERTY(QString memoryTotal READ memoryTotal NOTIFY performanceChanged)
+    Q_PROPERTY(QVariantList performanceHistory READ performanceHistory NOTIFY performanceChanged)
     Q_PROPERTY(int displayRotation READ displayRotation CONSTANT)
 
 public:
@@ -91,6 +114,8 @@ public:
     QString wifiScanError() const;
     QVariantList wifiNetworks() const;
     QVariantList ethernetPorts() const;
+    bool ethernetOperating() const;
+    QString ethernetOperationInterface() const;
     bool batteryAvailable() const;
     int batteryPercent() const;
     QString batteryStatus() const;
@@ -103,16 +128,37 @@ public:
     int batteryCurrentMa() const;
     QString batteryHealth() const;
     double batteryPowerW() const;
+    int batteryRawVoltageMv() const;
+    int batteryRawCurrentMa() const;
+    int batteryRemainingMah() const;
+    int batteryFullChargeMah() const;
+    int batteryDesignCapacityMah() const;
+    bool gaugeCommunication() const;
+    QString gaugeError() const;
+    QString batteryCalibrationStatus() const;
+    QString batteryCalibrationSummary() const;
+    QString boardProfile() const;
+    QVariantMap hardwareCapabilities() const;
     int volumePercent() const;
     bool audioAvailable() const;
     int displayBrightnessPercent() const;
     bool brightnessAvailable() const;
     int cpuTotal() const;
     QVariantList cpuUsage() const;
+    QVariantList cpuFrequencies() const;
     int gpuUsage() const;
+    double cpuTemperatureC() const;
+    int cpuFrequencyMhz() const;
+    int cpuMaxFrequencyMhz() const;
+    int gpuFrequencyMhz() const;
+    QString loadAverage() const;
+    QString uptime() const;
+    int processCount() const;
     int memoryPercent() const;
     QString memoryUsed() const;
+    QString memoryAvailable() const;
     QString memoryTotal() const;
+    QVariantList performanceHistory() const;
     int displayRotation() const;
 
     Q_INVOKABLE void refresh();
@@ -123,9 +169,16 @@ public:
     Q_INVOKABLE void scanWifi();
     Q_INVOKABLE void connectWifi(const QString &ssid, const QString &password);
     Q_INVOKABLE void forgetWifi(const QString &ssid);
+    Q_INVOKABLE void configureEthernet(const QString &interfaceName, const QString &connectionName,
+                                       const QString &method, const QString &address, int prefix,
+                                       const QString &gateway, const QString &dns);
+    Q_INVOKABLE void setEthernetConnected(const QString &interfaceName, bool connected);
     Q_INVOKABLE void setVolume(int percent);
     Q_INVOKABLE void playVolumeFeedback();
     Q_INVOKABLE void setDisplayBrightness(int percent);
+    Q_INVOKABLE bool calibrateBattery(int referenceVoltageMv, int referenceCurrentMa,
+                                      int designCapacityMah, bool stable);
+    Q_INVOKABLE void clearBatteryCalibration();
 
 signals:
     void systemInfoChanged();
@@ -167,8 +220,10 @@ private:
     QString m_wifiOperation;
     QString m_wifiOperationSsid;
     QString m_wifiScanError;
+    int m_wifiEmptyPollCount = 0;
     QVariantList m_wifiNetworks;
     QVariantList m_ethernetPorts;
+    QString m_ethernetOperationInterface;
     bool m_batteryAvailable = false;
     int m_batteryPercent = -1;
     QString m_batteryStatus;
@@ -179,7 +234,18 @@ private:
     QString m_chargeTemperatureZone;
     int m_batteryVoltageMv = -1;
     int m_batteryCurrentMa = 0;
+    int m_batteryRawVoltageMv = -1;
+    int m_batteryRawCurrentMa = 0;
+    int m_batteryRemainingMah = -1;
+    int m_batteryFullChargeMah = -1;
+    int m_batteryDesignCapacityMah = 10000;
+    bool m_gaugeCommunication = false;
+    QString m_gaugeError;
+    QString m_batteryCalibrationStatus = QStringLiteral("未校准");
+    QString m_batteryCalibrationSummary;
     QString m_batteryHealth;
+    QString m_boardProfile;
+    QVariantMap m_hardwareCapabilities;
     int m_volumePercent = -1;
     bool m_audioAvailable = false;
     int m_displayBrightnessPercent = -1;
@@ -191,16 +257,27 @@ private:
     qint64 m_lastInputMs = 0;
     int m_cpuTotal = -1;
     QVariantList m_cpuUsage;
+    QVariantList m_cpuFrequencies;
     int m_gpuUsage = -1;
+    double m_cpuTemperatureC = -273.15;
+    int m_cpuFrequencyMhz = -1;
+    int m_cpuMaxFrequencyMhz = -1;
+    int m_gpuFrequencyMhz = -1;
+    QString m_loadAverage;
+    QString m_uptime;
+    int m_processCount = -1;
     int m_memoryPercent = -1;
     qint64 m_memoryUsedBytes = 0;
+    qint64 m_memoryAvailableBytes = 0;
     qint64 m_memoryTotalBytes = 0;
     QVector<quint64> m_cpuPrevIdle;
     QVector<quint64> m_cpuPrevTotal;
+    QVariantList m_performanceHistory;
     bool m_cpuHavePrev = false;
     QFutureWatcher<QVariantMap> m_statusWatcher;
     QFutureWatcher<QVariantMap> m_wifiScanWatcher;
     QFutureWatcher<QVariantMap> m_wifiOperationWatcher;
+    QFutureWatcher<QVariantMap> m_ethernetOperationWatcher;
     int m_pendingVolumePercent = 65;
     QTimer m_volumeSetTimer;
     QProcess m_volumeSetProcess;

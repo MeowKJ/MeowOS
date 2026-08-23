@@ -1,0 +1,2 @@
+# Mount the first NVMe partition at /data when it appears.
+ACTION=="add", SUBSYSTEM=="block", KERNEL=="nvme*n*p[0-9]", ENV{SYSTEMD_WANTS}="meow-nvme-mount@%k.service"
