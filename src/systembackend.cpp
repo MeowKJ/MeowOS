@@ -15,6 +15,7 @@
 #include <QStorageInfo>
 #include <QSettings>
 #include <QSysInfo>
+#include <QUrl>
 #include <QtMath>
 #include <cstdio>
 
@@ -887,6 +888,14 @@ SystemBackend::SystemBackend(QObject *parent)
         emit operationMessage(result.value(QStringLiteral("message")).toString(), ok);
         refreshStatus();
     });
+    connect(&m_directoryWatcher, &QFutureWatcher<QVariantMap>::finished, this, [this]() {
+        const QVariantMap result = m_directoryWatcher.result();
+        m_fileEntries = result.value(QStringLiteral("entries")).toList();
+        m_filePath = result.value(QStringLiteral("path")).toString();
+        m_filesError = result.value(QStringLiteral("error")).toString();
+        m_filesLoading = false;
+        emit filesChanged();
+    });
     refresh();
 }
 
@@ -903,6 +912,10 @@ QString SystemBackend::nvmeMountPoint() const { return m_nvmeMountPoint; }
 QString SystemBackend::nvmeUsed() const { return m_nvmeUsed; }
 QString SystemBackend::nvmeTotal() const { return m_nvmeTotal; }
 int SystemBackend::nvmePercent() const { return m_nvmePercent; }
+QVariantList SystemBackend::fileEntries() const { return m_fileEntries; }
+QString SystemBackend::filePath() const { return m_filePath; }
+bool SystemBackend::filesLoading() const { return m_filesLoading; }
+QString SystemBackend::filesError() const { return m_filesError; }
 QString SystemBackend::wifiName() const { return m_wifiName; }
 bool SystemBackend::wifiConnected() const { return !m_wifiName.isEmpty(); }
 QString SystemBackend::wifiIpv4() const { return m_wifiIpv4; }
@@ -1549,4 +1562,45 @@ void SystemBackend::clearBatteryCalibration()
     m_batteryCalibrationSummary.clear();
     m_batteryDesignCapacityMah = 10000;
     emit powerChanged();
+}
+
+void SystemBackend::browseDirectory(const QString &requestedPath)
+{
+    if (m_directoryWatcher.isRunning()) return;
+    QString path = requestedPath;
+    if (path.startsWith(QStringLiteral("file:"))) path = QUrl(path).toLocalFile();
+    path = QDir::cleanPath(path);
+    if (!QDir(path).isAbsolute()) path = QStringLiteral("/home/radxa");
+    m_filesLoading = true;
+    m_filesError.clear();
+    emit filesChanged();
+    m_directoryWatcher.setFuture(QtConcurrent::run([path]() {
+        QVariantMap result;
+        result.insert(QStringLiteral("path"), path);
+        QVariantList entries;
+        QDir directory(path);
+        if (!directory.exists() || !directory.isReadable()) {
+            result.insert(QStringLiteral("error"), QStringLiteral("无法读取此位置"));
+            result.insert(QStringLiteral("entries"), entries);
+            return result;
+        }
+        const QFileInfoList files = directory.entryInfoList(
+            QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Readable,
+            QDir::DirsFirst | QDir::Name | QDir::IgnoreCase);
+        const int limit = qMin(files.size(), 1000);
+        for (int index = 0; index < limit; ++index) {
+            const QFileInfo &info = files.at(index);
+            QVariantMap entry;
+            entry.insert(QStringLiteral("name"), info.fileName());
+            entry.insert(QStringLiteral("path"), info.absoluteFilePath());
+            entry.insert(QStringLiteral("directory"), info.isDir());
+            entry.insert(QStringLiteral("size"), info.isDir() ? 0 : info.size());
+            entry.insert(QStringLiteral("modified"), info.lastModified().toString(QStringLiteral("yyyy-MM-dd HH:mm")));
+            entries.append(entry);
+        }
+        if (files.size() > limit)
+            result.insert(QStringLiteral("error"), QStringLiteral("此目录项目过多，仅显示前 1000 项"));
+        result.insert(QStringLiteral("entries"), entries);
+        return result;
+    }));
 }

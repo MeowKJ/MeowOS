@@ -2,7 +2,6 @@ import QtQuick 2.15
 import QtQuick.Window 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
-import Qt.labs.folderlistmodel 2.15
 
 ApplicationWindow {
     id: window
@@ -740,14 +739,14 @@ ApplicationWindow {
                 folderHistory.push({ url: currentFolder, label: currentLabel })
                 currentFolder = url
                 currentLabel = label
-                fileModel.folder = url
+                systemBackend.browseDirectory(url)
             }
             function goBackFolder() {
                 if (folderHistory.length === 0) return
                 var previous = folderHistory.pop()
                 currentFolder = previous.url
                 currentLabel = previous.label
-                fileModel.folder = currentFolder
+                systemBackend.browseDirectory(currentFolder)
             }
             function readableSize(bytes) {
                 if (bytes < 1024) return bytes + " B"
@@ -755,15 +754,7 @@ ApplicationWindow {
                 if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + " MB"
                 return (bytes / 1073741824).toFixed(1) + " GB"
             }
-            FolderListModel {
-                id: fileModel
-                folder: filesPage.currentFolder
-                showDirsFirst: true
-                showDotAndDotDot: false
-                sortField: FolderListModel.Name
-                sortReversed: false
-                nameFilters: ["*"]
-            }
+            Component.onCompleted: systemBackend.browseDirectory(currentFolder)
             Row {
                 z: 100
                 anchors { left: parent.left; top: parent.top; leftMargin: 44; topMargin: 42 }
@@ -799,7 +790,7 @@ ApplicationWindow {
                         color: filesPage.currentFolder === modelData.url ? "#EDEAFF" : "#FFFFFF"
                         border.color: filesPage.currentFolder === modelData.url ? window.purple : window.separator; border.width: 1
                         Text { anchors.centerIn: parent; text: modelData.label; color: filesPage.currentFolder === modelData.url ? window.purple : window.ink; font.family: window.uiFont; font.pixelSize: 17; font.weight: Font.DemiBold }
-                        MouseArea { anchors.fill: parent; onClicked: { filesPage.folderHistory = []; filesPage.currentFolder = modelData.url; filesPage.currentLabel = modelData.label; fileModel.folder = modelData.url } }
+                        MouseArea { anchors.fill: parent; onClicked: { filesPage.folderHistory = []; filesPage.currentFolder = modelData.url; filesPage.currentLabel = modelData.label; systemBackend.browseDirectory(modelData.url) } }
                     }
                 }
             }
@@ -808,7 +799,7 @@ ApplicationWindow {
                 radius: 22; color: "#FFFFFF"; border.color: window.separator; border.width: 1; clip: true
                 ListView {
                     anchors.fill: parent; anchors.margins: 10; clip: true
-                    model: fileModel
+                    model: systemBackend.fileEntries
                     boundsBehavior: Flickable.DragAndOvershootBounds
                     maximumFlickVelocity: 3200
                     delegate: Rectangle {
@@ -816,17 +807,17 @@ ApplicationWindow {
                         color: fileMouse.pressed ? "#F0EDF3" : (index % 2 ? "#FFFFFF" : "#FCFBFD")
                         RowLayout {
                             anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14; spacing: 14
-                            Rectangle { Layout.preferredWidth: 38; Layout.preferredHeight: 38; radius: 11; color: fileIsDir ? "#EAF2FF" : "#F2EFF5"; Image { anchors.centerIn: parent; width: 22; height: 22; source: fileIsDir ? "qrc:/assets/icons/hard-drive.svg" : "qrc:/assets/icons/info.svg"; sourceSize.width: 44; sourceSize.height: 44; opacity: 0.78 } }
-                            Text { Layout.fillWidth: true; text: fileName; color: window.ink; font.family: window.uiFont; font.pixelSize: 17; elide: Text.ElideRight }
-                            Text { text: fileIsDir ? "文件夹" : filesPage.readableSize(fileSize); color: window.secondary; font.family: window.uiFont; font.pixelSize: 14 }
+                            Rectangle { Layout.preferredWidth: 38; Layout.preferredHeight: 38; radius: 11; color: modelData.directory ? "#EAF2FF" : "#F2EFF5"; Image { anchors.centerIn: parent; width: 22; height: 22; source: modelData.directory ? "qrc:/assets/icons/hard-drive.svg" : "qrc:/assets/icons/info.svg"; sourceSize.width: 44; sourceSize.height: 44; opacity: 0.78 } }
+                            Text { Layout.fillWidth: true; text: modelData.name; color: window.ink; font.family: window.uiFont; font.pixelSize: 17; elide: Text.ElideRight }
+                            Text { text: modelData.directory ? "文件夹" : filesPage.readableSize(modelData.size); color: window.secondary; font.family: window.uiFont; font.pixelSize: 14 }
                         }
                         MouseArea {
                             id: fileMouse; anchors.fill: parent
-                            onClicked: if (fileIsDir) filesPage.enterFolder(fileUrl, fileName)
+                            onClicked: if (modelData.directory) filesPage.enterFolder(modelData.path, modelData.name)
                         }
                     }
-                    Text { anchors.centerIn: parent; visible: fileModel.status === FolderListModel.Ready && fileModel.count === 0; text: "这里还没有内容"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 18 }
-                    BusyIndicator { anchors.centerIn: parent; running: fileModel.status === FolderListModel.Loading; visible: running }
+                    Text { anchors.centerIn: parent; visible: !systemBackend.filesLoading && systemBackend.fileEntries.length === 0; text: systemBackend.filesError.length ? systemBackend.filesError : "这里还没有内容"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 18 }
+                    BusyIndicator { anchors.centerIn: parent; running: systemBackend.filesLoading; visible: running }
                 }
             }
         }
