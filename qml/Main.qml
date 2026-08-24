@@ -465,7 +465,7 @@ ApplicationWindow {
                 }
             }
 
-            AppHeader { title: "点击测试"; subtitle: "触摸与坐标验证"; trailingText: "清除"; trailingEnabled: true; onBackRequested: stack.pop(); onTrailingRequested: window.tapCount = 0 }
+            AppHeader { title: "点击测试"; subtitle: "触摸与坐标验证"; showBack: false; trailingText: "清除"; trailingEnabled: true; onExitRequested: stack.pop(); onTrailingRequested: window.tapCount = 0 }
         }
     }
 
@@ -507,7 +507,7 @@ ApplicationWindow {
 
             Component.onCompleted: placeTarget()
 
-            AppHeader { title: "喵喵反应"; subtitle: "30 秒触摸挑战"; trailingText: "最佳 " + reactionPage.best; onBackRequested: stack.pop() }
+            AppHeader { title: "喵喵反应"; subtitle: "30 秒触摸挑战"; showBack: false; trailingText: "最佳 " + reactionPage.best; onExitRequested: stack.pop() }
 
             Row {
                 anchors { top: parent.top; topMargin: 82; horizontalCenter: parent.horizontalCenter }
@@ -686,7 +686,7 @@ ApplicationWindow {
                     anchors.margins: 16
                     spacing: 5
 
-                    AppHeader { width: parent.width; title: "设置"; compact: true; onBackRequested: stack.pop() }
+                    AppHeader { width: parent.width; title: "设置"; compact: true; showBack: false; onExitRequested: stack.pop() }
 
                     SettingsNavRow { title: "Wi-Fi"; icon: "qrc:/assets/icons/wifi.svg"; accent: window.mint; selected: settingsPage.section === "wifi"; onClicked: settingsPage.openSection("wifi", 0) }
                     SettingsNavRow { title: "有线网络"; icon: "qrc:/assets/icons/ethernet-port.svg"; accent: "#4A90E2"; selected: settingsPage.section === "ethernet"; onClicked: settingsPage.openSection("ethernet", 1) }
@@ -851,7 +851,7 @@ ApplicationWindow {
                 else if (window.qaFileMove)
                     Qt.callLater(function() { systemBackend.transferFile("/home/radxa/meow-qa/source-move.txt", "/home/radxa/meow-qa/dest", true) })
             }
-            AppHeader { title: "文件"; subtitle: filesPage.currentLabel; trailingText: systemBackend.fileEntries.length + " 项"; onBackRequested: filesPage.handleBack() }
+            AppHeader { title: "文件"; subtitle: filesPage.currentLabel; showBack: filesPage.folderHistory.length > 0 || filesPage.currentFolder !== "/"; trailingText: systemBackend.fileEntries.length + " 项"; onBackRequested: filesPage.handleBack(); onExitRequested: stack.pop() }
             Flickable {
                 anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 24; rightMargin: 24; topMargin: 74 }
                 height: 52; contentWidth: Math.max(width, favoriteRow.width); clip: true; flickableDirection: Flickable.HorizontalFlick
@@ -2707,7 +2707,9 @@ ApplicationWindow {
         property string trailingText: ""
         property bool compact: false
         property bool trailingEnabled: false
+        property bool showBack: true
         signal backRequested()
+        signal exitRequested()
         signal trailingRequested()
         z: 700
         width: parent ? parent.width : 0
@@ -2717,7 +2719,7 @@ ApplicationWindow {
         RowLayout {
             anchors { fill: parent; leftMargin: appHeader.compact ? 0 : 18; rightMargin: appHeader.compact ? 0 : 22 }
             spacing: 10
-            CompactBackButton { Layout.preferredWidth: 52; Layout.preferredHeight: 52; onClicked: appHeader.backRequested() }
+            CompactBackButton { visible: appHeader.showBack; Layout.preferredWidth: visible ? 52 : 0; Layout.preferredHeight: 52; onClicked: appHeader.backRequested() }
             ColumnLayout {
                 Layout.fillWidth: true; spacing: 0
                 Text { text: appHeader.title; color: window.ink; font.family: window.uiFont; font.pixelSize: appHeader.compact ? 28 : 30; font.weight: Font.Bold; Layout.fillWidth: true; elide: Text.ElideRight }
@@ -2730,6 +2732,13 @@ ApplicationWindow {
                 color: appHeader.trailingEnabled && trailingMouse.pressed ? "#E2DDFB" : "#EEEAFE"
                 Text { id: trailingLabel; anchors.centerIn: parent; text: appHeader.trailingText; color: window.purple; font.family: window.uiFont; font.pixelSize: 16; font.weight: Font.DemiBold }
                 MouseArea { id: trailingMouse; anchors.fill: parent; enabled: appHeader.trailingEnabled; onClicked: appHeader.trailingRequested() }
+            }
+            Rectangle {
+                Layout.preferredWidth: appHeader.compact ? 64 : 72
+                Layout.preferredHeight: 38; radius: 13
+                color: exitMouse.pressed ? "#E5E1E9" : "#F0EDF3"
+                Text { anchors.centerIn: parent; text: "退出"; color: window.ink; font.family: window.uiFont; font.pixelSize: 16; font.weight: Font.DemiBold }
+                MouseArea { id: exitMouse; anchors.fill: parent; onClicked: appHeader.exitRequested() }
             }
         }
     }
