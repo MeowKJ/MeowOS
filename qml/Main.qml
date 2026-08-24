@@ -59,6 +59,10 @@ ApplicationWindow {
                                    || Qt.application.arguments.indexOf("--ethernet") >= 0
                                    || Qt.application.arguments.indexOf("--ethernet-config") >= 0
     readonly property bool startInFiles: Qt.application.arguments.indexOf("--files") >= 0
+                                         || Qt.application.arguments.indexOf("--qa-file-copy") >= 0
+                                         || Qt.application.arguments.indexOf("--qa-file-move") >= 0
+    readonly property bool qaFileCopy: Qt.application.arguments.indexOf("--qa-file-copy") >= 0
+    readonly property bool qaFileMove: Qt.application.arguments.indexOf("--qa-file-move") >= 0
     readonly property bool settingsQaMetrics: Qt.application.arguments.indexOf("--qa") >= 0
     readonly property bool settingsQaSwitch: Qt.application.arguments.indexOf("--qa-switch") >= 0
 
@@ -731,6 +735,7 @@ ApplicationWindow {
             property var previewEntry: ({})
             property bool previewVisible: false
             property var selectedEntry: ({})
+            readonly property bool hasSelection: selectedEntry && typeof selectedEntry.path === "string" && selectedEntry.path.length > 0
             property string clipboardPath: ""
             property string clipboardName: ""
             property bool clipboardMove: false
@@ -801,7 +806,7 @@ ApplicationWindow {
                 return (path.indexOf("/home/radxa/") === 0 || path.indexOf("/data/") === 0)
             }
             function stageTransfer(move) {
-                if (!selectedEntry.path) return
+                if (!hasSelection) return
                 clipboardPath = selectedEntry.path
                 clipboardName = selectedEntry.name
                 clipboardMove = move
@@ -825,7 +830,13 @@ ApplicationWindow {
                     }
                 }
             }
-            Component.onCompleted: systemBackend.browseDirectory(currentFolder)
+            Component.onCompleted: {
+                systemBackend.browseDirectory(currentFolder)
+                if (window.qaFileCopy)
+                    Qt.callLater(function() { systemBackend.transferFile("/home/radxa/meow-qa/source-copy.txt", "/home/radxa/meow-qa/dest", false) })
+                else if (window.qaFileMove)
+                    Qt.callLater(function() { systemBackend.transferFile("/home/radxa/meow-qa/source-move.txt", "/home/radxa/meow-qa/dest", true) })
+            }
             AppHeader { title: "文件"; subtitle: filesPage.currentLabel; trailingText: "收藏"; trailingEnabled: true; onBackRequested: filesPage.handleBack(); onTrailingRequested: systemBackend.addFavoriteLocation(filesPage.currentFolder, filesPage.currentLabel) }
             Flickable {
                 anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 24; rightMargin: 24; topMargin: 74 }
@@ -870,7 +881,7 @@ ApplicationWindow {
                 }
             }
             Rectangle {
-                anchors { left: parent.left; right: parent.right; top: parent.top; bottom: parent.bottom; leftMargin: 24; rightMargin: 24; topMargin: 172; bottomMargin: (filesPage.selectedEntry.path || filesPage.clipboardPath.length) ? 92 : 24 }
+                anchors { left: parent.left; right: parent.right; top: parent.top; bottom: parent.bottom; leftMargin: 24; rightMargin: 24; topMargin: 172; bottomMargin: (filesPage.hasSelection || filesPage.clipboardPath.length > 0) ? 92 : 24 }
                 radius: 22; color: "#FFFFFF"; border.color: window.separator; border.width: 1; clip: true
                 ListView {
                     anchors.fill: parent; anchors.margins: 10; clip: true
@@ -904,14 +915,14 @@ ApplicationWindow {
                 }
             }
             Rectangle {
-                z: 600; visible: filesPage.selectedEntry.path || filesPage.clipboardPath.length
+                z: 600; visible: filesPage.hasSelection || filesPage.clipboardPath.length > 0
                 anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 24; rightMargin: 24; bottomMargin: 18 }
                 height: 62; radius: 20; color: "#FCFBFD"; border.color: "#DCD7E1"; border.width: 1
                 RowLayout {
                     anchors.fill: parent; anchors.leftMargin: 18; anchors.rightMargin: 12; spacing: 10
-                    ColumnLayout { Layout.fillWidth: true; spacing: 0; Text { text: filesPage.selectedEntry.path ? filesPage.selectedEntry.name : filesPage.clipboardName; color: window.ink; font.family: window.uiFont; font.pixelSize: 16; font.weight: Font.DemiBold; elide: Text.ElideMiddle; Layout.fillWidth: true } Text { text: filesPage.selectedEntry.path ? "选择操作" : (filesPage.clipboardMove ? "移动到当前目录" : "复制到当前目录"); color: window.secondary; font.family: window.uiFont; font.pixelSize: 12 } }
-                    Rectangle { visible: filesPage.selectedEntry.path; Layout.preferredWidth: 76; Layout.preferredHeight: 40; radius: 13; color: "#EAF2FF"; Text { anchors.centerIn: parent; text: "复制"; color: "#3978C5"; font.family: window.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold } MouseArea { anchors.fill: parent; onClicked: filesPage.stageTransfer(false) } }
-                    Rectangle { visible: filesPage.selectedEntry.path; Layout.preferredWidth: 76; Layout.preferredHeight: 40; radius: 13; color: "#EAF8F1"; Text { anchors.centerIn: parent; text: "移动"; color: "#238C69"; font.family: window.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold } MouseArea { anchors.fill: parent; onClicked: filesPage.stageTransfer(true) } }
+                    ColumnLayout { Layout.fillWidth: true; spacing: 0; Text { text: filesPage.hasSelection ? filesPage.selectedEntry.name : filesPage.clipboardName; color: window.ink; font.family: window.uiFont; font.pixelSize: 16; font.weight: Font.DemiBold; elide: Text.ElideMiddle; Layout.fillWidth: true } Text { text: filesPage.hasSelection ? "选择操作" : (filesPage.clipboardMove ? "移动到当前目录" : "复制到当前目录"); color: window.secondary; font.family: window.uiFont; font.pixelSize: 12 } }
+                    Rectangle { visible: filesPage.hasSelection; Layout.preferredWidth: 76; Layout.preferredHeight: 40; radius: 13; color: "#EAF2FF"; Text { anchors.centerIn: parent; text: "复制"; color: "#3978C5"; font.family: window.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold } MouseArea { anchors.fill: parent; onClicked: filesPage.stageTransfer(false) } }
+                    Rectangle { visible: filesPage.hasSelection; Layout.preferredWidth: 76; Layout.preferredHeight: 40; radius: 13; color: "#EAF8F1"; Text { anchors.centerIn: parent; text: "移动"; color: "#238C69"; font.family: window.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold } MouseArea { anchors.fill: parent; onClicked: filesPage.stageTransfer(true) } }
                     Rectangle { visible: filesPage.clipboardPath.length > 0; Layout.preferredWidth: 116; Layout.preferredHeight: 40; radius: 13; color: window.purple; opacity: systemBackend.fileOperationRunning ? 0.5 : 1; Text { anchors.centerIn: parent; text: systemBackend.fileOperationRunning ? systemBackend.fileOperationText : "粘贴到这里"; color: "white"; font.family: window.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold } MouseArea { anchors.fill: parent; enabled: !systemBackend.fileOperationRunning; onClicked: filesPage.pasteHere() } }
                     Rectangle { Layout.preferredWidth: 68; Layout.preferredHeight: 40; radius: 13; color: "#F0EDF3"; Text { anchors.centerIn: parent; text: "取消"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 14; font.weight: Font.DemiBold } MouseArea { anchors.fill: parent; onClicked: { filesPage.selectedEntry = ({}); filesPage.clipboardPath = ""; filesPage.clipboardName = "" } } }
                 }
