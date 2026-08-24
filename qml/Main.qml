@@ -58,6 +58,7 @@ ApplicationWindow {
                                    || Qt.application.arguments.indexOf("--performance") >= 0
                                    || Qt.application.arguments.indexOf("--ethernet") >= 0
                                    || Qt.application.arguments.indexOf("--ethernet-config") >= 0
+    readonly property bool startInFiles: Qt.application.arguments.indexOf("--files") >= 0
     readonly property bool settingsQaMetrics: Qt.application.arguments.indexOf("--qa") >= 0
     readonly property bool settingsQaSwitch: Qt.application.arguments.indexOf("--qa-switch") >= 0
 
@@ -244,7 +245,8 @@ ApplicationWindow {
         StackView {
             id: stack
             anchors { left: parent.left; right: parent.right; top: parent.top; bottom: parent.bottom; topMargin: window.statusBarHeight }
-            initialItem: window.startInSettings ? settingsComponent : homeComponent
+            initialItem: window.startInFiles ? fileManagerComponent
+                                             : (window.startInSettings ? settingsComponent : homeComponent)
             // Page changes are already visually structured by the settings
             // layout. Avoid an extra opacity animation on every tap.
             pushEnter: Transition { }
