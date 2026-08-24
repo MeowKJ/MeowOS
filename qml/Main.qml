@@ -2,6 +2,7 @@ import QtQuick 2.15
 import QtQuick.Window 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import Qt.labs.folderlistmodel 2.15
 
 ApplicationWindow {
     id: window
@@ -71,6 +72,7 @@ ApplicationWindow {
     function openApp(appId) {
         if (appId === "touch-test") stack.push(touchTestComponent)
         else if (appId === "reaction-game") stack.push(reactionGameComponent)
+        else if (appId === "files") stack.push(fileManagerComponent)
         else if (appId === "settings") stack.push(settingsComponent)
     }
 
@@ -179,6 +181,7 @@ ApplicationWindow {
         id: appRegistry
         ListElement { appId: "touch-test"; appTitle: "点击测试"; iconSource: "qrc:/assets/icons/mouse-pointer-click.svg"; accent: "#FF7FA7" }
         ListElement { appId: "reaction-game"; appTitle: "喵喵反应"; iconSource: "qrc:/assets/icons/mouse-pointer-click.svg"; accent: "#49B990" }
+        ListElement { appId: "files"; appTitle: "文件"; iconSource: "qrc:/assets/icons/hard-drive.svg"; accent: "#5E93E8" }
         ListElement { appId: "settings"; appTitle: "设置"; iconSource: "qrc:/assets/icons/settings.svg"; accent: "#7B6DF0" }
     }
 
@@ -720,6 +723,110 @@ ApplicationWindow {
                     Loader { id: performancePageLoader; active: false; asynchronous: true; sourceComponent: performanceSettings }
                     Loader { id: storagePageLoader; active: false; asynchronous: true; sourceComponent: storageSettings }
                     Loader { id: aboutPageLoader; active: false; asynchronous: true; sourceComponent: aboutSettings }
+                }
+            }
+        }
+    }
+
+    Component {
+        id: fileManagerComponent
+        Rectangle {
+            id: filesPage
+            color: window.canvas
+            property string currentFolder: "file:///home/radxa"
+            property string currentLabel: "用户目录"
+            property var folderHistory: []
+            function enterFolder(url, label) {
+                folderHistory.push({ url: currentFolder, label: currentLabel })
+                currentFolder = url
+                currentLabel = label
+                fileModel.folder = url
+            }
+            function goBackFolder() {
+                if (folderHistory.length === 0) return
+                var previous = folderHistory.pop()
+                currentFolder = previous.url
+                currentLabel = previous.label
+                fileModel.folder = currentFolder
+            }
+            function readableSize(bytes) {
+                if (bytes < 1024) return bytes + " B"
+                if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB"
+                if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + " MB"
+                return (bytes / 1073741824).toFixed(1) + " GB"
+            }
+            FolderListModel {
+                id: fileModel
+                folder: filesPage.currentFolder
+                showDirsFirst: true
+                showDotAndDotDot: false
+                sortField: FolderListModel.Name
+                sortReversed: false
+                nameFilters: ["*"]
+            }
+            Row {
+                z: 100
+                anchors { left: parent.left; top: parent.top; leftMargin: 44; topMargin: 42 }
+                spacing: 10
+                CompactBackButton { onClicked: stack.pop() }
+                Text { anchors.verticalCenter: parent.verticalCenter; text: "文件"; color: window.ink; font.family: window.uiFont; font.pixelSize: 22; font.weight: Font.DemiBold }
+            }
+            Row {
+                anchors { right: parent.right; top: parent.top; rightMargin: 44; topMargin: 45 }
+                spacing: 10
+                Rectangle {
+                    width: 118; height: 40; radius: 14; color: "#F0EDF3"
+                    Text { anchors.centerIn: parent; text: filesPage.currentLabel; color: window.secondary; font.family: window.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold }
+                }
+                Rectangle {
+                    visible: filesPage.folderHistory.length > 0
+                    width: 82; height: 40; radius: 14; color: window.purple
+                    Text { anchors.centerIn: parent; text: "上一级"; color: "white"; font.family: window.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold }
+                    MouseArea { anchors.fill: parent; onClicked: filesPage.goBackFolder() }
+                }
+            }
+            Row {
+                anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 30; rightMargin: 30; topMargin: 108 }
+                spacing: 12
+                Repeater {
+                    model: [
+                        { label: "用户目录", url: "file:///home/radxa" },
+                        { label: "NVMe /data", url: "file:///data" },
+                        { label: "系统盘", url: "file:///" }
+                    ]
+                    delegate: Rectangle {
+                        width: (parent.width - 24) / 3; height: 54; radius: 16
+                        color: filesPage.currentFolder === modelData.url ? "#EDEAFF" : "#FFFFFF"
+                        border.color: filesPage.currentFolder === modelData.url ? window.purple : window.separator; border.width: 1
+                        Text { anchors.centerIn: parent; text: modelData.label; color: filesPage.currentFolder === modelData.url ? window.purple : window.ink; font.family: window.uiFont; font.pixelSize: 17; font.weight: Font.DemiBold }
+                        MouseArea { anchors.fill: parent; onClicked: { filesPage.folderHistory = []; filesPage.currentFolder = modelData.url; filesPage.currentLabel = modelData.label; fileModel.folder = modelData.url } }
+                    }
+                }
+            }
+            Rectangle {
+                anchors { left: parent.left; right: parent.right; top: parent.top; bottom: parent.bottom; margins: 30; topMargin: 178; bottomMargin: 30 }
+                radius: 22; color: "#FFFFFF"; border.color: window.separator; border.width: 1; clip: true
+                ListView {
+                    anchors.fill: parent; anchors.margins: 10; clip: true
+                    model: fileModel
+                    boundsBehavior: Flickable.DragAndOvershootBounds
+                    maximumFlickVelocity: 3200
+                    delegate: Rectangle {
+                        width: ListView.view.width; height: 60; radius: 14
+                        color: fileMouse.pressed ? "#F0EDF3" : (index % 2 ? "#FFFFFF" : "#FCFBFD")
+                        RowLayout {
+                            anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14; spacing: 14
+                            Rectangle { Layout.preferredWidth: 38; Layout.preferredHeight: 38; radius: 11; color: fileIsDir ? "#EAF2FF" : "#F2EFF5"; Image { anchors.centerIn: parent; width: 22; height: 22; source: fileIsDir ? "qrc:/assets/icons/hard-drive.svg" : "qrc:/assets/icons/info.svg"; sourceSize.width: 44; sourceSize.height: 44; opacity: 0.78 } }
+                            Text { Layout.fillWidth: true; text: fileName; color: window.ink; font.family: window.uiFont; font.pixelSize: 17; elide: Text.ElideRight }
+                            Text { text: fileIsDir ? "文件夹" : filesPage.readableSize(fileSize); color: window.secondary; font.family: window.uiFont; font.pixelSize: 14 }
+                        }
+                        MouseArea {
+                            id: fileMouse; anchors.fill: parent
+                            onClicked: if (fileIsDir) filesPage.enterFolder(fileUrl, fileName)
+                        }
+                    }
+                    Text { anchors.centerIn: parent; visible: fileModel.status === FolderListModel.Ready && fileModel.count === 0; text: "这里还没有内容"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 18 }
+                    BusyIndicator { anchors.centerIn: parent; running: fileModel.status === FolderListModel.Loading; visible: running }
                 }
             }
         }
