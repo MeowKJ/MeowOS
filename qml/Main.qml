@@ -70,6 +70,7 @@ ApplicationWindow {
 
     function openApp(appId) {
         if (appId === "touch-test") stack.push(touchTestComponent)
+        else if (appId === "reaction-game") stack.push(reactionGameComponent)
         else if (appId === "settings") stack.push(settingsComponent)
     }
 
@@ -177,6 +178,7 @@ ApplicationWindow {
     ListModel {
         id: appRegistry
         ListElement { appId: "touch-test"; appTitle: "点击测试"; iconSource: "qrc:/assets/icons/mouse-pointer-click.svg"; accent: "#FF7FA7" }
+        ListElement { appId: "reaction-game"; appTitle: "喵喵反应"; iconSource: "qrc:/assets/icons/mouse-pointer-click.svg"; accent: "#49B990" }
         ListElement { appId: "settings"; appTitle: "设置"; iconSource: "qrc:/assets/icons/settings.svg"; accent: "#7B6DF0" }
     }
 
@@ -455,6 +457,114 @@ ApplicationWindow {
                 text: "清除轨迹"
                 font.family: window.uiFont; font.pixelSize: 17
                 onClicked: window.tapCount = 0
+            }
+        }
+    }
+
+    Component {
+        id: reactionGameComponent
+        Rectangle {
+            id: reactionPage
+            color: window.canvas
+            property bool running: false
+            property int remaining: 30
+            property int score: 0
+            property int streak: 0
+            property int best: 0
+            property int targetSize: 112
+
+            function placeTarget() {
+                var margin = 28
+                var minX = margin
+                var maxX = Math.max(minX, gameBoard.width - targetSize - margin)
+                var minY = margin
+                var maxY = Math.max(minY, gameBoard.height - targetSize - margin)
+                target.x = minX + Math.floor(Math.random() * (maxX - minX + 1))
+                target.y = minY + Math.floor(Math.random() * (maxY - minY + 1))
+            }
+            function startGame() {
+                score = 0
+                streak = 0
+                remaining = 30
+                running = true
+                placeTarget()
+                gameTimer.restart()
+            }
+            function finishGame() {
+                running = false
+                gameTimer.stop()
+                if (score > best) best = score
+            }
+
+            Component.onCompleted: placeTarget()
+
+            Row {
+                z: 100
+                anchors { left: parent.left; top: parent.top; leftMargin: 44; topMargin: 42 }
+                spacing: 10
+                CompactBackButton { onClicked: stack.pop() }
+                Text { anchors.verticalCenter: parent.verticalCenter; text: "喵喵反应"; color: window.ink; font.family: window.uiFont; font.pixelSize: 22; font.weight: Font.DemiBold }
+            }
+
+            Row {
+                anchors { top: parent.top; topMargin: 42; horizontalCenter: parent.horizontalCenter }
+                spacing: 34
+                Text { text: "得分 " + reactionPage.score; color: window.ink; font.family: window.uiFont; font.pixelSize: 22; font.weight: Font.DemiBold }
+                Text { text: "连击 " + reactionPage.streak; color: window.pink; font.family: window.uiFont; font.pixelSize: 22; font.weight: Font.DemiBold }
+                Text { text: "时间 " + reactionPage.remaining + "s"; color: reactionPage.remaining <= 5 ? "#FF3B30" : window.secondary; font.family: window.uiFont; font.pixelSize: 22; font.weight: Font.DemiBold }
+            }
+
+            Rectangle {
+                id: gameBoard
+                anchors { left: parent.left; right: parent.right; top: parent.top; bottom: parent.bottom; margins: 28; topMargin: 112 }
+                radius: 28; color: "#FFF8FA"; border.color: "#EFDCE5"; border.width: 2
+                Text {
+                    anchors.centerIn: parent
+                    visible: !reactionPage.running
+                    text: reactionPage.remaining === 0 ? "本轮结束\n得分 " + reactionPage.score : "点击开始，然后尽快点中绿色喵爪"
+                    horizontalAlignment: Text.AlignHCenter
+                    color: window.secondary; font.family: window.uiFont; font.pixelSize: 26; lineHeight: 1.25
+                }
+                Rectangle {
+                    id: target
+                    width: reactionPage.targetSize; height: reactionPage.targetSize; radius: width / 2
+                    color: "#49B990"; border.color: "#FFFFFF"; border.width: 6
+                    visible: reactionPage.running
+                    Text { anchors.centerIn: parent; text: "喵"; color: "white"; font.family: window.uiFont; font.pixelSize: 36; font.weight: Font.Bold }
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: {
+                            reactionPage.score += 1
+                            reactionPage.streak += 1
+                            reactionPage.placeTarget()
+                        }
+                    }
+                }
+            }
+
+            Button {
+                anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 34 }
+                text: reactionPage.running ? "进行中…" : (reactionPage.remaining === 0 ? "再来一局" : "开始游戏")
+                enabled: !reactionPage.running
+                font.family: window.uiFont; font.pixelSize: 19; font.weight: Font.DemiBold
+                contentItem: Text { text: parent.text; color: parent.enabled ? "white" : "#AAA5AC"; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter; font: parent.font }
+                background: Rectangle { radius: 18; color: parent.enabled ? window.purple : "#E5E2E7" }
+                onClicked: reactionPage.startGame()
+            }
+
+            Text {
+                anchors { right: parent.right; bottom: parent.bottom; rightMargin: 40; bottomMargin: 48 }
+                text: "最佳 " + reactionPage.best
+                color: window.secondary; font.family: window.uiFont; font.pixelSize: 16
+            }
+
+            Timer {
+                id: gameTimer
+                interval: 1000; repeat: true
+                onTriggered: {
+                    reactionPage.remaining -= 1
+                    if (reactionPage.remaining <= 0) reactionPage.finishGame()
+                }
             }
         }
     }
