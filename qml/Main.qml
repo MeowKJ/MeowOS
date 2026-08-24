@@ -753,9 +753,23 @@ ApplicationWindow {
                 currentLabel = previous.label
                 systemBackend.browseDirectory(currentFolder)
             }
+            function parentFolder() {
+                if (currentFolder === "/") return "/"
+                var slash = currentFolder.lastIndexOf("/")
+                return slash <= 0 ? "/" : currentFolder.slice(0, slash)
+            }
             function handleBack() {
                 if (folderHistory.length > 0) goBackFolder()
-                else stack.pop()
+                else if (currentFolder !== "/") {
+                    currentFolder = parentFolder()
+                    currentLabel = currentFolder === "/" ? "系统盘" : currentFolder.slice(currentFolder.lastIndexOf("/") + 1)
+                    systemBackend.browseDirectory(currentFolder)
+                } else stack.pop()
+            }
+            function isCurrentFavorite() {
+                for (var i = 0; i < systemBackend.favoriteLocations.length; ++i)
+                    if (systemBackend.favoriteLocations[i].path === currentFolder) return true
+                return false
             }
             function readableSize(bytes) {
                 if (bytes < 1024) return bytes + " B"
@@ -837,13 +851,13 @@ ApplicationWindow {
                 else if (window.qaFileMove)
                     Qt.callLater(function() { systemBackend.transferFile("/home/radxa/meow-qa/source-move.txt", "/home/radxa/meow-qa/dest", true) })
             }
-            AppHeader { title: "文件"; subtitle: filesPage.currentLabel; trailingText: "收藏"; trailingEnabled: true; onBackRequested: filesPage.handleBack(); onTrailingRequested: systemBackend.addFavoriteLocation(filesPage.currentFolder, filesPage.currentLabel) }
+            AppHeader { title: "文件"; subtitle: filesPage.currentLabel; trailingText: systemBackend.fileEntries.length + " 项"; onBackRequested: filesPage.handleBack() }
             Flickable {
                 anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 24; rightMargin: 24; topMargin: 74 }
                 height: 52; contentWidth: Math.max(width, favoriteRow.width); clip: true; flickableDirection: Flickable.HorizontalFlick
                 Row {
                     id: favoriteRow; height: parent.height; spacing: 10
-                    Text { visible: systemBackend.favoriteLocations.length === 0; anchors.verticalCenter: parent.verticalCenter; text: "暂无收藏 · 进入目录后点击右上角“收藏”"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 16 }
+                    Text { visible: systemBackend.favoriteLocations.length === 0; anchors.verticalCenter: parent.verticalCenter; text: "暂无收藏 · 进入目录后点击底部“收藏”"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 16 }
                     Repeater {
                         model: systemBackend.favoriteLocations
                         delegate: Rectangle {
@@ -881,7 +895,7 @@ ApplicationWindow {
                 }
             }
             Rectangle {
-                anchors { left: parent.left; right: parent.right; top: parent.top; bottom: parent.bottom; leftMargin: 24; rightMargin: 24; topMargin: 172; bottomMargin: (filesPage.hasSelection || filesPage.clipboardPath.length > 0) ? 92 : 24 }
+                anchors { left: parent.left; right: parent.right; top: parent.top; bottom: parent.bottom; leftMargin: 24; rightMargin: 24; topMargin: 172; bottomMargin: 92 }
                 radius: 22; color: "#FFFFFF"; border.color: window.separator; border.width: 1; clip: true
                 ListView {
                     anchors.fill: parent; anchors.margins: 10; clip: true
@@ -915,16 +929,17 @@ ApplicationWindow {
                 }
             }
             Rectangle {
-                z: 600; visible: filesPage.hasSelection || filesPage.clipboardPath.length > 0
+                z: 600; visible: true
                 anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 24; rightMargin: 24; bottomMargin: 18 }
                 height: 62; radius: 20; color: "#FCFBFD"; border.color: "#DCD7E1"; border.width: 1
                 RowLayout {
                     anchors.fill: parent; anchors.leftMargin: 18; anchors.rightMargin: 12; spacing: 10
-                    ColumnLayout { Layout.fillWidth: true; spacing: 0; Text { text: filesPage.hasSelection ? filesPage.selectedEntry.name : filesPage.clipboardName; color: window.ink; font.family: window.uiFont; font.pixelSize: 16; font.weight: Font.DemiBold; elide: Text.ElideMiddle; Layout.fillWidth: true } Text { text: filesPage.hasSelection ? "选择操作" : (filesPage.clipboardMove ? "移动到当前目录" : "复制到当前目录"); color: window.secondary; font.family: window.uiFont; font.pixelSize: 12 } }
+                    ColumnLayout { Layout.fillWidth: true; spacing: 0; Text { text: filesPage.hasSelection ? filesPage.selectedEntry.name : (filesPage.clipboardPath.length ? filesPage.clipboardName : filesPage.currentLabel); color: window.ink; font.family: window.uiFont; font.pixelSize: 16; font.weight: Font.DemiBold; elide: Text.ElideMiddle; Layout.fillWidth: true } Text { text: filesPage.hasSelection ? "选择操作" : (filesPage.clipboardPath.length ? (filesPage.clipboardMove ? "移动到当前目录" : "复制到当前目录") : filesPage.currentFolder); color: window.secondary; font.family: window.uiFont; font.pixelSize: 12; elide: Text.ElideMiddle; Layout.fillWidth: true } }
+                    Rectangle { visible: !filesPage.hasSelection && filesPage.clipboardPath.length === 0; Layout.preferredWidth: 94; Layout.preferredHeight: 40; radius: 13; color: filesPage.isCurrentFavorite() ? "#EAF8F1" : "#EEEAFE"; Text { anchors.centerIn: parent; text: filesPage.isCurrentFavorite() ? "已收藏" : "收藏"; color: filesPage.isCurrentFavorite() ? "#238C69" : window.purple; font.family: window.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold } MouseArea { anchors.fill: parent; enabled: !filesPage.isCurrentFavorite(); onClicked: systemBackend.addFavoriteLocation(filesPage.currentFolder, filesPage.currentLabel) } }
                     Rectangle { visible: filesPage.hasSelection; Layout.preferredWidth: 76; Layout.preferredHeight: 40; radius: 13; color: "#EAF2FF"; Text { anchors.centerIn: parent; text: "复制"; color: "#3978C5"; font.family: window.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold } MouseArea { anchors.fill: parent; onClicked: filesPage.stageTransfer(false) } }
                     Rectangle { visible: filesPage.hasSelection; Layout.preferredWidth: 76; Layout.preferredHeight: 40; radius: 13; color: "#EAF8F1"; Text { anchors.centerIn: parent; text: "移动"; color: "#238C69"; font.family: window.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold } MouseArea { anchors.fill: parent; onClicked: filesPage.stageTransfer(true) } }
                     Rectangle { visible: filesPage.clipboardPath.length > 0; Layout.preferredWidth: 116; Layout.preferredHeight: 40; radius: 13; color: window.purple; opacity: systemBackend.fileOperationRunning ? 0.5 : 1; Text { anchors.centerIn: parent; text: systemBackend.fileOperationRunning ? systemBackend.fileOperationText : "粘贴到这里"; color: "white"; font.family: window.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold } MouseArea { anchors.fill: parent; enabled: !systemBackend.fileOperationRunning; onClicked: filesPage.pasteHere() } }
-                    Rectangle { Layout.preferredWidth: 68; Layout.preferredHeight: 40; radius: 13; color: "#F0EDF3"; Text { anchors.centerIn: parent; text: "取消"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 14; font.weight: Font.DemiBold } MouseArea { anchors.fill: parent; onClicked: { filesPage.selectedEntry = ({}); filesPage.clipboardPath = ""; filesPage.clipboardName = "" } } }
+                    Rectangle { visible: filesPage.hasSelection || filesPage.clipboardPath.length > 0; Layout.preferredWidth: 68; Layout.preferredHeight: 40; radius: 13; color: "#F0EDF3"; Text { anchors.centerIn: parent; text: "取消"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 14; font.weight: Font.DemiBold } MouseArea { anchors.fill: parent; onClicked: { filesPage.selectedEntry = ({}); filesPage.clipboardPath = ""; filesPage.clipboardName = "" } } }
                 }
             }
             Rectangle {

@@ -879,6 +879,16 @@ SystemBackend::SystemBackend(QObject *parent)
     m_batteryDesignCapacityMah = calibration.value(QStringLiteral("designCapacityMah"), 10000).toInt();
     QSettings fileSettings(QStringLiteral("Meow OS"), QStringLiteral("files"));
     m_favoriteLocations = fileSettings.value(QStringLiteral("favorites")).toList();
+    if (!fileSettings.value(QStringLiteral("favoritesInitialized"), false).toBool()) {
+        if (m_favoriteLocations.isEmpty()) {
+            QVariantMap rootFavorite;
+            rootFavorite.insert(QStringLiteral("path"), QStringLiteral("/"));
+            rootFavorite.insert(QStringLiteral("label"), QStringLiteral("系统盘"));
+            m_favoriteLocations.append(rootFavorite);
+            fileSettings.setValue(QStringLiteral("favorites"), m_favoriteLocations);
+        }
+        fileSettings.setValue(QStringLiteral("favoritesInitialized"), true);
+    }
     m_lastInputMs = QDateTime::currentMSecsSinceEpoch();
     if (qApp) qApp->installEventFilter(this);
     m_volumeSetTimer.setSingleShot(true);
