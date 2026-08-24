@@ -734,9 +734,11 @@ ApplicationWindow {
         Rectangle {
             id: filesPage
             color: window.canvas
-            property string currentFolder: "file:///home/radxa"
+            property string currentFolder: "/home/radxa"
             property string currentLabel: "用户目录"
             property var folderHistory: []
+            property var previewEntry: ({})
+            property bool previewVisible: false
             function enterFolder(url, label) {
                 folderHistory.push({ url: currentFolder, label: currentLabel })
                 currentFolder = url
@@ -756,48 +758,94 @@ ApplicationWindow {
                 if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + " MB"
                 return (bytes / 1073741824).toFixed(1) + " GB"
             }
+            function suffix(name) {
+                var dot = name.lastIndexOf(".")
+                return dot > 0 ? name.slice(dot + 1).toLowerCase() : ""
+            }
+            function isImage(name) { return ["png", "jpg", "jpeg", "webp", "bmp", "gif"].indexOf(suffix(name)) >= 0 }
+            function isText(name) { return ["txt", "md", "json", "csv", "log", "ini", "conf", "qml", "js", "cpp", "c", "h", "py", "sh", "xml", "yaml", "yml"].indexOf(suffix(name)) >= 0 }
+            function entryIcon(entry) {
+                if (entry.directory) return "qrc:/assets/icons/folder.svg"
+                if (isImage(entry.name)) return "qrc:/assets/icons/image.svg"
+                if (isText(entry.name)) return "qrc:/assets/icons/file-text.svg"
+                return "qrc:/assets/icons/file.svg"
+            }
+            function entryColor(entry) {
+                if (entry.directory) return "#4A90E2"
+                if (isImage(entry.name)) return "#E76D9B"
+                if (isText(entry.name)) return "#8B68E8"
+                return "#7E8794"
+            }
+            function pathParts() {
+                var result = [{ label: "系统盘", path: "/" }]
+                if (currentFolder === "/") return result
+                var names = currentFolder.split("/")
+                var accumulated = ""
+                for (var i = 0; i < names.length; ++i) {
+                    if (!names[i].length) continue
+                    accumulated += "/" + names[i]
+                    result.push({ label: names[i], path: accumulated })
+                }
+                return result
+            }
+            function openEntry(entry) {
+                if (entry.directory) {
+                    enterFolder(entry.path, entry.name)
+                    return
+                }
+                previewEntry = entry
+                previewVisible = true
+                if (isText(entry.name)) systemBackend.previewDocument(entry.path)
+            }
             Component.onCompleted: systemBackend.browseDirectory(currentFolder)
             Row {
                 z: 100
                 anchors { left: parent.left; top: parent.top; leftMargin: 44; topMargin: 42 }
                 spacing: 10
-                CompactBackButton { onClicked: stack.pop() }
+                CompactBackButton { onClicked: filesPage.folderHistory.length > 0 ? filesPage.goBackFolder() : stack.pop() }
                 Text { anchors.verticalCenter: parent.verticalCenter; text: "文件"; color: window.ink; font.family: window.uiFont; font.pixelSize: 22; font.weight: Font.DemiBold }
             }
+            Text { anchors { right: parent.right; top: parent.top; rightMargin: 44; topMargin: 50 } text: systemBackend.fileEntries.length + " 项"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 16 }
             Row {
-                anchors { right: parent.right; top: parent.top; rightMargin: 44; topMargin: 45 }
-                spacing: 10
-                Rectangle {
-                    width: 118; height: 40; radius: 14; color: "#F0EDF3"
-                    Text { anchors.centerIn: parent; text: filesPage.currentLabel; color: window.secondary; font.family: window.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold }
-                }
-                Rectangle {
-                    visible: filesPage.folderHistory.length > 0
-                    width: 82; height: 40; radius: 14; color: window.purple
-                    Text { anchors.centerIn: parent; text: "上一级"; color: "white"; font.family: window.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold }
-                    MouseArea { anchors.fill: parent; onClicked: filesPage.goBackFolder() }
-                }
-            }
-            Row {
-                anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 30; rightMargin: 30; topMargin: 108 }
+                anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 30; rightMargin: 30; topMargin: 100 }
                 spacing: 12
                 Repeater {
                     model: [
-                        { label: "用户目录", url: "file:///home/radxa" },
-                        { label: "NVMe /data", url: "file:///data" },
-                        { label: "系统盘", url: "file:///" }
+                        { label: "用户目录", url: "/home/radxa", color: "#7B6DF0" },
+                        { label: "NVMe", url: "/data", color: "#49B990" },
+                        { label: "系统盘", url: "/", color: "#4A90E2" }
                     ]
                     delegate: Rectangle {
                         width: (parent.width - 24) / 3; height: 54; radius: 16
-                        color: filesPage.currentFolder === modelData.url ? "#EDEAFF" : "#FFFFFF"
-                        border.color: filesPage.currentFolder === modelData.url ? window.purple : window.separator; border.width: 1
-                        Text { anchors.centerIn: parent; text: modelData.label; color: filesPage.currentFolder === modelData.url ? window.purple : window.ink; font.family: window.uiFont; font.pixelSize: 17; font.weight: Font.DemiBold }
+                        color: filesPage.currentFolder === modelData.url ? modelData.color : "#FFFFFF"
+                        border.color: filesPage.currentFolder === modelData.url ? modelData.color : window.separator; border.width: 1
+                        Text { anchors.centerIn: parent; text: modelData.label; color: filesPage.currentFolder === modelData.url ? "white" : modelData.color; font.family: window.uiFont; font.pixelSize: 17; font.weight: Font.DemiBold }
                         MouseArea { anchors.fill: parent; onClicked: { filesPage.folderHistory = []; filesPage.currentFolder = modelData.url; filesPage.currentLabel = modelData.label; systemBackend.browseDirectory(modelData.url) } }
                     }
                 }
             }
+            Flickable {
+                anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 38; rightMargin: 38; topMargin: 166 }
+                height: 42; contentWidth: breadcrumbRow.width; clip: true; flickableDirection: Flickable.HorizontalFlick
+                Row {
+                    id: breadcrumbRow; spacing: 6
+                    Repeater {
+                        model: filesPage.pathParts()
+                        delegate: Row {
+                            spacing: 6
+                            Text { visible: index > 0; text: "›"; color: "#AAA5AE"; font.pixelSize: 22; anchors.verticalCenter: parent.verticalCenter }
+                            Rectangle {
+                                width: crumbText.implicitWidth + 22; height: 34; radius: 11
+                                color: index === filesPage.pathParts().length - 1 ? "#EDEAFF" : "transparent"
+                                Text { id: crumbText; anchors.centerIn: parent; text: modelData.label; color: index === filesPage.pathParts().length - 1 ? window.purple : window.secondary; font.family: window.uiFont; font.pixelSize: 15; font.weight: index === filesPage.pathParts().length - 1 ? Font.DemiBold : Font.Normal }
+                                MouseArea { anchors.fill: parent; onClicked: filesPage.enterFolder(modelData.path, modelData.label) }
+                            }
+                        }
+                    }
+                }
+            }
             Rectangle {
-                anchors { left: parent.left; right: parent.right; top: parent.top; bottom: parent.bottom; margins: 30; topMargin: 178; bottomMargin: 30 }
+                anchors { left: parent.left; right: parent.right; top: parent.top; bottom: parent.bottom; margins: 30; topMargin: 210; bottomMargin: 30 }
                 radius: 22; color: "#FFFFFF"; border.color: window.separator; border.width: 1; clip: true
                 ListView {
                     anchors.fill: parent; anchors.margins: 10; clip: true
@@ -806,20 +854,51 @@ ApplicationWindow {
                     maximumFlickVelocity: 3200
                     delegate: Rectangle {
                         width: ListView.view.width; height: 60; radius: 14
-                        color: fileMouse.pressed ? "#F0EDF3" : (index % 2 ? "#FFFFFF" : "#FCFBFD")
+                        color: fileMouse.pressed ? "#F0EDF3" : "#FFFFFF"
                         RowLayout {
                             anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14; spacing: 14
-                            Rectangle { Layout.preferredWidth: 38; Layout.preferredHeight: 38; radius: 11; color: modelData.directory ? "#EAF2FF" : "#F2EFF5"; Image { anchors.centerIn: parent; width: 22; height: 22; source: modelData.directory ? "qrc:/assets/icons/hard-drive.svg" : "qrc:/assets/icons/info.svg"; sourceSize.width: 44; sourceSize.height: 44; opacity: 0.78 } }
+                            Rectangle { Layout.preferredWidth: 40; Layout.preferredHeight: 40; radius: 12; color: filesPage.entryColor(modelData); Image { anchors.centerIn: parent; width: 23; height: 23; source: filesPage.entryIcon(modelData); sourceSize.width: 46; sourceSize.height: 46 } }
                             Text { Layout.fillWidth: true; text: modelData.name; color: window.ink; font.family: window.uiFont; font.pixelSize: 17; elide: Text.ElideRight }
-                            Text { text: modelData.directory ? "文件夹" : filesPage.readableSize(modelData.size); color: window.secondary; font.family: window.uiFont; font.pixelSize: 14 }
+                            ColumnLayout { spacing: 1; Text { Layout.alignment: Qt.AlignRight; text: modelData.directory ? "文件夹" : filesPage.readableSize(modelData.size); color: window.secondary; font.family: window.uiFont; font.pixelSize: 14 } Text { Layout.alignment: Qt.AlignRight; visible: !modelData.directory; text: modelData.modified; color: "#AAA5AE"; font.family: window.uiFont; font.pixelSize: 11 } }
                         }
                         MouseArea {
                             id: fileMouse; anchors.fill: parent
-                            onClicked: if (modelData.directory) filesPage.enterFolder(modelData.path, modelData.name)
+                            onClicked: filesPage.openEntry(modelData)
                         }
                     }
                     Text { anchors.centerIn: parent; visible: !systemBackend.filesLoading && systemBackend.fileEntries.length === 0; text: systemBackend.filesError.length ? systemBackend.filesError : "这里还没有内容"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 18 }
                     BusyIndicator { anchors.centerIn: parent; running: systemBackend.filesLoading; visible: running }
+                }
+            }
+            Rectangle {
+                z: 1200; anchors.fill: parent; visible: filesPage.previewVisible; color: "#660B0A0D"
+                MouseArea { anchors.fill: parent; onClicked: filesPage.previewVisible = false }
+                Rectangle {
+                    anchors.centerIn: parent; width: parent.width - 150; height: parent.height - 120; radius: 28; color: "#FCFBFD"; border.color: window.separator; border.width: 1; clip: true
+                    MouseArea { anchors.fill: parent; onClicked: mouse.accepted = true }
+                    RowLayout {
+                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 22 }
+                        ColumnLayout { Layout.fillWidth: true; spacing: 2; Text { text: filesPage.previewEntry.name || "预览"; color: window.ink; font.family: window.uiFont; font.pixelSize: 23; font.weight: Font.Bold; elide: Text.ElideMiddle; Layout.fillWidth: true } Text { text: filesPage.readableSize(filesPage.previewEntry.size || 0) + " · " + (filesPage.previewEntry.modified || ""); color: window.secondary; font.family: window.uiFont; font.pixelSize: 13 } }
+                        Rectangle { Layout.preferredWidth: 72; Layout.preferredHeight: 40; radius: 14; color: "#EEEAFE"; Text { anchors.centerIn: parent; text: "完成"; color: window.purple; font.family: window.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold } MouseArea { anchors.fill: parent; onClicked: filesPage.previewVisible = false } }
+                    }
+                    Image {
+                        anchors { left: parent.left; right: parent.right; top: parent.top; bottom: parent.bottom; margins: 28; topMargin: 86 }
+                        visible: filesPage.isImage(filesPage.previewEntry.name || "")
+                        source: visible ? "file://" + encodeURI(filesPage.previewEntry.path) : ""
+                        fillMode: Image.PreserveAspectFit; asynchronous: true; cache: false
+                    }
+                    Flickable {
+                        anchors { left: parent.left; right: parent.right; top: parent.top; bottom: parent.bottom; margins: 28; topMargin: 86 }
+                        visible: filesPage.isText(filesPage.previewEntry.name || ""); clip: true
+                        contentWidth: width; contentHeight: previewText.implicitHeight + 20
+                        Text { id: previewText; width: parent.width; text: systemBackend.previewLoading ? "正在读取…" : (systemBackend.previewError.length ? systemBackend.previewError : systemBackend.previewText); color: window.ink; font.family: window.uiFont; font.pixelSize: 15; wrapMode: Text.WrapAnywhere; lineHeight: 1.25 }
+                    }
+                    Column {
+                        anchors.centerIn: parent; spacing: 12
+                        visible: !filesPage.isImage(filesPage.previewEntry.name || "") && !filesPage.isText(filesPage.previewEntry.name || "")
+                        Rectangle { anchors.horizontalCenter: parent.horizontalCenter; width: 72; height: 72; radius: 22; color: "#7E8794"; Image { anchors.centerIn: parent; width: 38; height: 38; source: "qrc:/assets/icons/file.svg" } }
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "此文件暂不支持内容预览"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 17 }
+                    }
                 }
             }
         }

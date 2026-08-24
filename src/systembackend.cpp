@@ -896,6 +896,14 @@ SystemBackend::SystemBackend(QObject *parent)
         m_filesLoading = false;
         emit filesChanged();
     });
+    connect(&m_previewWatcher, &QFutureWatcher<QVariantMap>::finished, this, [this]() {
+        const QVariantMap result = m_previewWatcher.result();
+        m_previewPath = result.value(QStringLiteral("path")).toString();
+        m_previewText = result.value(QStringLiteral("text")).toString();
+        m_previewError = result.value(QStringLiteral("error")).toString();
+        m_previewLoading = false;
+        emit previewChanged();
+    });
     refresh();
 }
 
@@ -916,6 +924,10 @@ QVariantList SystemBackend::fileEntries() const { return m_fileEntries; }
 QString SystemBackend::filePath() const { return m_filePath; }
 bool SystemBackend::filesLoading() const { return m_filesLoading; }
 QString SystemBackend::filesError() const { return m_filesError; }
+QString SystemBackend::previewPath() const { return m_previewPath; }
+QString SystemBackend::previewText() const { return m_previewText; }
+QString SystemBackend::previewError() const { return m_previewError; }
+bool SystemBackend::previewLoading() const { return m_previewLoading; }
 QString SystemBackend::wifiName() const { return m_wifiName; }
 bool SystemBackend::wifiConnected() const { return !m_wifiName.isEmpty(); }
 QString SystemBackend::wifiIpv4() const { return m_wifiIpv4; }
@@ -1601,6 +1613,41 @@ void SystemBackend::browseDirectory(const QString &requestedPath)
         if (files.size() > limit)
             result.insert(QStringLiteral("error"), QStringLiteral("此目录项目过多，仅显示前 1000 项"));
         result.insert(QStringLiteral("entries"), entries);
+        return result;
+    }));
+}
+
+void SystemBackend::previewDocument(const QString &requestedPath)
+{
+    if (m_previewWatcher.isRunning()) return;
+    QString path = requestedPath;
+    if (path.startsWith(QStringLiteral("file:"))) path = QUrl(path).toLocalFile();
+    path = QDir::cleanPath(path);
+    m_previewPath = path;
+    m_previewText.clear();
+    m_previewError.clear();
+    m_previewLoading = true;
+    emit previewChanged();
+    m_previewWatcher.setFuture(QtConcurrent::run([path]() {
+        QVariantMap result;
+        result.insert(QStringLiteral("path"), path);
+        QFile file(path);
+        if (!file.open(QIODevice::ReadOnly)) {
+            result.insert(QStringLiteral("error"), QStringLiteral("无法读取此文档"));
+            return result;
+        }
+        const qint64 limit = 256 * 1024;
+        QByteArray bytes = file.read(limit + 1);
+        if (bytes.contains('\0')) {
+            result.insert(QStringLiteral("error"), QStringLiteral("此文件不是可预览的文本文档"));
+            return result;
+        }
+        const bool truncated = bytes.size() > limit;
+        if (truncated) bytes.truncate(limit);
+        QString text = QString::fromUtf8(bytes);
+        if (text.isNull()) text = QString::fromLocal8Bit(bytes);
+        if (truncated) text.append(QStringLiteral("\n\n—— 内容过长，仅预览前 256 KB ——"));
+        result.insert(QStringLiteral("text"), text);
         return result;
     }));
 }

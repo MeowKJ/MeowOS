@@ -29,6 +29,10 @@ class SystemBackend final : public QObject
     Q_PROPERTY(QString filePath READ filePath NOTIFY filesChanged)
     Q_PROPERTY(bool filesLoading READ filesLoading NOTIFY filesChanged)
     Q_PROPERTY(QString filesError READ filesError NOTIFY filesChanged)
+    Q_PROPERTY(QString previewPath READ previewPath NOTIFY previewChanged)
+    Q_PROPERTY(QString previewText READ previewText NOTIFY previewChanged)
+    Q_PROPERTY(QString previewError READ previewError NOTIFY previewChanged)
+    Q_PROPERTY(bool previewLoading READ previewLoading NOTIFY previewChanged)
     Q_PROPERTY(QString wifiName READ wifiName NOTIFY wifiChanged)
     Q_PROPERTY(bool wifiConnected READ wifiConnected NOTIFY wifiChanged)
     Q_PROPERTY(QString wifiIpv4 READ wifiIpv4 NOTIFY wifiChanged)
@@ -109,6 +113,10 @@ public:
     QString filePath() const;
     bool filesLoading() const;
     QString filesError() const;
+    QString previewPath() const;
+    QString previewText() const;
+    QString previewError() const;
+    bool previewLoading() const;
     QString wifiName() const;
     bool wifiConnected() const;
     QString wifiIpv4() const;
@@ -188,11 +196,13 @@ public:
                                       int designCapacityMah, bool stable);
     Q_INVOKABLE void clearBatteryCalibration();
     Q_INVOKABLE void browseDirectory(const QString &path);
+    Q_INVOKABLE void previewDocument(const QString &path);
 
 signals:
     void systemInfoChanged();
     void storageChanged();
     void filesChanged();
+    void previewChanged();
     void wifiChanged();
     void ethernetChanged();
     void powerChanged();
@@ -226,6 +236,10 @@ private:
     QString m_filePath;
     QString m_filesError;
     bool m_filesLoading = false;
+    QString m_previewPath;
+    QString m_previewText;
+    QString m_previewError;
+    bool m_previewLoading = false;
     QString m_wifiName;
     QString m_wifiIpv4;
     QString m_wifiGateway;
@@ -293,6 +307,7 @@ private:
     QFutureWatcher<QVariantMap> m_wifiOperationWatcher;
     QFutureWatcher<QVariantMap> m_ethernetOperationWatcher;
     QFutureWatcher<QVariantMap> m_directoryWatcher;
+    QFutureWatcher<QVariantMap> m_previewWatcher;
     int m_pendingVolumePercent = 65;
     QTimer m_volumeSetTimer;
     QProcess m_volumeSetProcess;

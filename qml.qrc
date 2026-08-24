@@ -20,5 +20,9 @@
         <file>assets/icons/sun.svg</file>
         <file>assets/icons/ethernet-port.svg</file>
         <file>assets/icons/delete.svg</file>
+        <file>assets/icons/folder.svg</file>
+        <file>assets/icons/image.svg</file>
+        <file>assets/icons/file-text.svg</file>
+        <file>assets/icons/file.svg</file>
     </qresource>
 </RCC>
