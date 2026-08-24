@@ -231,7 +231,13 @@ ApplicationWindow {
         rotation: window.uiRotation
         transformOrigin: Item.TopLeft
         focus: true
-        Keys.onEscapePressed: if (stack.depth > 1) stack.pop()
+        Keys.onEscapePressed: {
+            if (stack.depth <= 1) return
+            if (stack.currentItem && stack.currentItem.objectName === "meow-files-page")
+                stack.currentItem.handleBack()
+            else
+                stack.pop()
+        }
 
         Rectangle { anchors.fill: parent; color: window.canvas }
 
@@ -268,7 +274,13 @@ ApplicationWindow {
             width: 34
             property real pressX: 0
             onPressed: pressX = mouse.x
-            onReleased: if (mouse.x - pressX > 92) stack.pop()
+            onReleased: {
+                if (mouse.x - pressX <= 92) return
+                if (stack.currentItem && stack.currentItem.objectName === "meow-files-page")
+                    stack.currentItem.handleBack()
+                else
+                    stack.pop()
+            }
         }
 
         Rectangle {
@@ -733,6 +745,7 @@ ApplicationWindow {
         id: fileManagerComponent
         Rectangle {
             id: filesPage
+            objectName: "meow-files-page"
             color: window.canvas
             property string currentFolder: "/home/radxa"
             property string currentLabel: "用户目录"
@@ -751,6 +764,10 @@ ApplicationWindow {
                 currentFolder = previous.url
                 currentLabel = previous.label
                 systemBackend.browseDirectory(currentFolder)
+            }
+            function handleBack() {
+                if (folderHistory.length > 0) goBackFolder()
+                else stack.pop()
             }
             function readableSize(bytes) {
                 if (bytes < 1024) return bytes + " B"
@@ -800,14 +817,23 @@ ApplicationWindow {
             Component.onCompleted: systemBackend.browseDirectory(currentFolder)
             Row {
                 z: 100
-                anchors { left: parent.left; top: parent.top; leftMargin: 44; topMargin: 42 }
+                anchors { left: parent.left; top: parent.top; leftMargin: 24; topMargin: 8 }
                 spacing: 10
-                CompactBackButton { onClicked: filesPage.folderHistory.length > 0 ? filesPage.goBackFolder() : stack.pop() }
+                CompactBackButton { visible: filesPage.folderHistory.length > 0; onClicked: filesPage.goBackFolder() }
                 Text { anchors.verticalCenter: parent.verticalCenter; text: "文件"; color: window.ink; font.family: window.uiFont; font.pixelSize: 22; font.weight: Font.DemiBold }
             }
-            Text { anchors { right: parent.right; top: parent.top; rightMargin: 44; topMargin: 50 } text: systemBackend.fileEntries.length + " 项"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 16 }
             Row {
-                anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 30; rightMargin: 30; topMargin: 100 }
+                anchors { right: parent.right; top: parent.top; rightMargin: 24; topMargin: 14 }
+                spacing: 12
+                Text { anchors.verticalCenter: parent.verticalCenter; text: systemBackend.fileEntries.length + " 项"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 15 }
+                Rectangle {
+                    width: 72; height: 38; radius: 13; color: "#EEEAFE"
+                    Text { anchors.centerIn: parent; text: "退出"; color: window.purple; font.family: window.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold }
+                    MouseArea { anchors.fill: parent; onClicked: stack.pop() }
+                }
+            }
+            Row {
+                anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 24; rightMargin: 24; topMargin: 62 }
                 spacing: 12
                 Repeater {
                     model: [
@@ -825,8 +851,8 @@ ApplicationWindow {
                 }
             }
             Flickable {
-                anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 38; rightMargin: 38; topMargin: 166 }
-                height: 42; contentWidth: breadcrumbRow.width; clip: true; flickableDirection: Flickable.HorizontalFlick
+                anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 30; rightMargin: 30; topMargin: 122 }
+                height: 38; contentWidth: breadcrumbRow.width; clip: true; flickableDirection: Flickable.HorizontalFlick
                 Row {
                     id: breadcrumbRow; spacing: 6
                     Repeater {
@@ -845,7 +871,7 @@ ApplicationWindow {
                 }
             }
             Rectangle {
-                anchors { left: parent.left; right: parent.right; top: parent.top; bottom: parent.bottom; margins: 30; topMargin: 210; bottomMargin: 30 }
+                anchors { left: parent.left; right: parent.right; top: parent.top; bottom: parent.bottom; margins: 24; topMargin: 164; bottomMargin: 24 }
                 radius: 22; color: "#FFFFFF"; border.color: window.separator; border.width: 1; clip: true
                 ListView {
                     anchors.fill: parent; anchors.margins: 10; clip: true
