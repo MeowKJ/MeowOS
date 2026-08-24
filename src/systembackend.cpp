@@ -879,14 +879,20 @@ SystemBackend::SystemBackend(QObject *parent)
     m_batteryDesignCapacityMah = calibration.value(QStringLiteral("designCapacityMah"), 10000).toInt();
     QSettings fileSettings(QStringLiteral("Meow OS"), QStringLiteral("files"));
     m_favoriteLocations = fileSettings.value(QStringLiteral("favorites")).toList();
-    if (!fileSettings.value(QStringLiteral("favoritesInitialized"), false).toBool()) {
-        if (m_favoriteLocations.isEmpty()) {
-            QVariantMap rootFavorite;
-            rootFavorite.insert(QStringLiteral("path"), QStringLiteral("/"));
-            rootFavorite.insert(QStringLiteral("label"), QStringLiteral("系统盘"));
-            m_favoriteLocations.append(rootFavorite);
-            fileSettings.setValue(QStringLiteral("favorites"), m_favoriteLocations);
-        }
+    const int favoriteDefaultsVersion = fileSettings.value(QStringLiteral("favoriteDefaultsVersion"), 0).toInt();
+    if (favoriteDefaultsVersion < 2) {
+        const auto ensureFavorite = [this](const QString &path, const QString &label) {
+            for (const QVariant &item : m_favoriteLocations)
+                if (item.toMap().value(QStringLiteral("path")).toString() == path) return;
+            QVariantMap favorite;
+            favorite.insert(QStringLiteral("path"), path);
+            favorite.insert(QStringLiteral("label"), label);
+            m_favoriteLocations.append(favorite);
+        };
+        ensureFavorite(QStringLiteral("/"), QStringLiteral("系统盘"));
+        ensureFavorite(QStringLiteral("/data"), QStringLiteral("NVMe"));
+        fileSettings.setValue(QStringLiteral("favorites"), m_favoriteLocations);
+        fileSettings.setValue(QStringLiteral("favoriteDefaultsVersion"), 2);
         fileSettings.setValue(QStringLiteral("favoritesInitialized"), true);
     }
     m_lastInputMs = QDateTime::currentMSecsSinceEpoch();

@@ -861,10 +861,10 @@ ApplicationWindow {
                     Repeater {
                         model: systemBackend.favoriteLocations
                         delegate: Rectangle {
-                            width: favoriteLabel.implicitWidth + 38; height: 44; radius: 15
+                            width: favoriteLabel.implicitWidth + 28; height: 44; radius: 15
                             color: filesPage.currentFolder === modelData.path ? "#7B6DF0" : "#FFFFFF"
                             border.color: filesPage.currentFolder === modelData.path ? "#7B6DF0" : "#DCD7E1"; border.width: 1
-                            Row { anchors.centerIn: parent; spacing: 7; Rectangle { width: 9; height: 9; radius: 5; color: filesPage.currentFolder === modelData.path ? "#FFFFFF" : (index % 3 === 0 ? "#7B6DF0" : (index % 3 === 1 ? "#49B990" : "#4A90E2")) } Text { id: favoriteLabel; text: modelData.label; color: filesPage.currentFolder === modelData.path ? "white" : window.ink; font.family: window.uiFont; font.pixelSize: 16; font.weight: Font.DemiBold } }
+                            Text { id: favoriteLabel; anchors.centerIn: parent; text: modelData.label; color: filesPage.currentFolder === modelData.path ? "white" : window.ink; font.family: window.uiFont; font.pixelSize: 16; font.weight: Font.DemiBold }
                             MouseArea {
                                 anchors.fill: parent
                                 onClicked: { filesPage.folderHistory = []; filesPage.currentFolder = modelData.path; filesPage.currentLabel = modelData.label; systemBackend.browseDirectory(modelData.path) }
