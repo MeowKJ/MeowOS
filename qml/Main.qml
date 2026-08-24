@@ -730,6 +730,11 @@ ApplicationWindow {
             property var folderHistory: []
             property var previewEntry: ({})
             property bool previewVisible: false
+            property var selectedEntry: ({})
+            property string clipboardPath: ""
+            property string clipboardName: ""
+            property bool clipboardMove: false
+            property bool pastePending: false
             function enterFolder(url, label) {
                 folderHistory.push({ url: currentFolder, label: currentLabel })
                 currentFolder = url
@@ -792,28 +797,60 @@ ApplicationWindow {
                 previewVisible = true
                 if (isText(entry.name)) systemBackend.previewDocument(entry.path)
             }
+            function canTransfer(path) {
+                return (path.indexOf("/home/radxa/") === 0 || path.indexOf("/data/") === 0)
+            }
+            function stageTransfer(move) {
+                if (!selectedEntry.path) return
+                clipboardPath = selectedEntry.path
+                clipboardName = selectedEntry.name
+                clipboardMove = move
+                selectedEntry = ({})
+            }
+            function pasteHere() {
+                if (!clipboardPath.length || systemBackend.fileOperationRunning) return
+                pastePending = true
+                systemBackend.transferFile(clipboardPath, currentFolder, clipboardMove)
+                Qt.callLater(function() {
+                    if (!systemBackend.fileOperationRunning) filesPage.pastePending = false
+                })
+            }
+            Connections {
+                target: systemBackend
+                function onFileOperationChanged() {
+                    if (filesPage.pastePending && !systemBackend.fileOperationRunning) {
+                        filesPage.pastePending = false
+                        filesPage.clipboardPath = ""
+                        filesPage.clipboardName = ""
+                    }
+                }
+            }
             Component.onCompleted: systemBackend.browseDirectory(currentFolder)
-            AppHeader { title: "文件"; subtitle: filesPage.currentLabel; trailingText: systemBackend.fileEntries.length + " 项"; onBackRequested: filesPage.handleBack() }
-            Row {
+            AppHeader { title: "文件"; subtitle: filesPage.currentLabel; trailingText: "收藏"; trailingEnabled: true; onBackRequested: filesPage.handleBack(); onTrailingRequested: systemBackend.addFavoriteLocation(filesPage.currentFolder, filesPage.currentLabel) }
+            Flickable {
                 anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 24; rightMargin: 24; topMargin: 74 }
-                spacing: 12
-                Repeater {
-                    model: [
-                        { label: "用户目录", url: "/home/radxa", color: "#7B6DF0" },
-                        { label: "NVMe", url: "/data", color: "#49B990" },
-                        { label: "系统盘", url: "/", color: "#4A90E2" }
-                    ]
-                    delegate: Rectangle {
-                        width: (parent.width - 24) / 3; height: 54; radius: 16
-                        color: filesPage.currentFolder === modelData.url ? modelData.color : "#FFFFFF"
-                        border.color: filesPage.currentFolder === modelData.url ? modelData.color : window.separator; border.width: 1
-                        Text { anchors.centerIn: parent; text: modelData.label; color: filesPage.currentFolder === modelData.url ? "white" : modelData.color; font.family: window.uiFont; font.pixelSize: 17; font.weight: Font.DemiBold }
-                        MouseArea { anchors.fill: parent; onClicked: { filesPage.folderHistory = []; filesPage.currentFolder = modelData.url; filesPage.currentLabel = modelData.label; systemBackend.browseDirectory(modelData.url) } }
+                height: 52; contentWidth: Math.max(width, favoriteRow.width); clip: true; flickableDirection: Flickable.HorizontalFlick
+                Row {
+                    id: favoriteRow; height: parent.height; spacing: 10
+                    Text { visible: systemBackend.favoriteLocations.length === 0; anchors.verticalCenter: parent.verticalCenter; text: "暂无收藏 · 进入目录后点击右上角“收藏”"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 16 }
+                    Repeater {
+                        model: systemBackend.favoriteLocations
+                        delegate: Rectangle {
+                            width: favoriteLabel.implicitWidth + 38; height: 44; radius: 15
+                            color: filesPage.currentFolder === modelData.path ? "#7B6DF0" : "#FFFFFF"
+                            border.color: filesPage.currentFolder === modelData.path ? "#7B6DF0" : "#DCD7E1"; border.width: 1
+                            Row { anchors.centerIn: parent; spacing: 7; Rectangle { width: 9; height: 9; radius: 5; color: filesPage.currentFolder === modelData.path ? "#FFFFFF" : (index % 3 === 0 ? "#7B6DF0" : (index % 3 === 1 ? "#49B990" : "#4A90E2")) } Text { id: favoriteLabel; text: modelData.label; color: filesPage.currentFolder === modelData.path ? "white" : window.ink; font.family: window.uiFont; font.pixelSize: 16; font.weight: Font.DemiBold } }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: { filesPage.folderHistory = []; filesPage.currentFolder = modelData.path; filesPage.currentLabel = modelData.label; systemBackend.browseDirectory(modelData.path) }
+                                onPressAndHold: systemBackend.removeFavoriteLocation(modelData.path)
+                            }
+                        }
                     }
                 }
             }
             Flickable {
-                anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 30; rightMargin: 30; topMargin: 134 }
+                anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 30; rightMargin: 30; topMargin: 130 }
                 height: 38; contentWidth: breadcrumbRow.width; clip: true; flickableDirection: Flickable.HorizontalFlick
                 Row {
                     id: breadcrumbRow; spacing: 6
@@ -833,7 +870,7 @@ ApplicationWindow {
                 }
             }
             Rectangle {
-                anchors { left: parent.left; right: parent.right; top: parent.top; bottom: parent.bottom; margins: 24; topMargin: 176; bottomMargin: 24 }
+                anchors { left: parent.left; right: parent.right; top: parent.top; bottom: parent.bottom; leftMargin: 24; rightMargin: 24; topMargin: 172; bottomMargin: (filesPage.selectedEntry.path || filesPage.clipboardPath.length) ? 92 : 24 }
                 radius: 22; color: "#FFFFFF"; border.color: window.separator; border.width: 1; clip: true
                 ListView {
                     anchors.fill: parent; anchors.margins: 10; clip: true
@@ -842,7 +879,8 @@ ApplicationWindow {
                     maximumFlickVelocity: 3200
                     delegate: Rectangle {
                         width: ListView.view.width; height: 60; radius: 14
-                        color: fileMouse.pressed ? "#F0EDF3" : "#FFFFFF"
+                        color: filesPage.selectedEntry.path === modelData.path ? "#EEEAFE" : (fileMouse.pressed ? "#F0EDF3" : "#FFFFFF")
+                        border.color: filesPage.selectedEntry.path === modelData.path ? "#BEB3F5" : "transparent"; border.width: 1
                         RowLayout {
                             anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14; spacing: 14
                             Rectangle { Layout.preferredWidth: 40; Layout.preferredHeight: 40; radius: 12; color: filesPage.entryColor(modelData); Image { anchors.centerIn: parent; width: 23; height: 23; source: filesPage.entryIcon(modelData); sourceSize.width: 46; sourceSize.height: 46 } }
@@ -851,11 +889,31 @@ ApplicationWindow {
                         }
                         MouseArea {
                             id: fileMouse; anchors.fill: parent
-                            onClicked: filesPage.openEntry(modelData)
+                            property bool held: false
+                            onPressed: held = false
+                            onPressAndHold: {
+                                held = true
+                                if (filesPage.canTransfer(modelData.path)) filesPage.selectedEntry = modelData
+                                else systemBackend.operationMessage("系统位置为只读，不能复制或移动", false)
+                            }
+                            onClicked: if (!held) filesPage.openEntry(modelData)
                         }
                     }
                     Text { anchors.centerIn: parent; visible: !systemBackend.filesLoading && systemBackend.fileEntries.length === 0; text: systemBackend.filesError.length ? systemBackend.filesError : "这里还没有内容"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 18 }
                     BusyIndicator { anchors.centerIn: parent; running: systemBackend.filesLoading; visible: running }
+                }
+            }
+            Rectangle {
+                z: 600; visible: filesPage.selectedEntry.path || filesPage.clipboardPath.length
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 24; rightMargin: 24; bottomMargin: 18 }
+                height: 62; radius: 20; color: "#FCFBFD"; border.color: "#DCD7E1"; border.width: 1
+                RowLayout {
+                    anchors.fill: parent; anchors.leftMargin: 18; anchors.rightMargin: 12; spacing: 10
+                    ColumnLayout { Layout.fillWidth: true; spacing: 0; Text { text: filesPage.selectedEntry.path ? filesPage.selectedEntry.name : filesPage.clipboardName; color: window.ink; font.family: window.uiFont; font.pixelSize: 16; font.weight: Font.DemiBold; elide: Text.ElideMiddle; Layout.fillWidth: true } Text { text: filesPage.selectedEntry.path ? "选择操作" : (filesPage.clipboardMove ? "移动到当前目录" : "复制到当前目录"); color: window.secondary; font.family: window.uiFont; font.pixelSize: 12 } }
+                    Rectangle { visible: filesPage.selectedEntry.path; Layout.preferredWidth: 76; Layout.preferredHeight: 40; radius: 13; color: "#EAF2FF"; Text { anchors.centerIn: parent; text: "复制"; color: "#3978C5"; font.family: window.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold } MouseArea { anchors.fill: parent; onClicked: filesPage.stageTransfer(false) } }
+                    Rectangle { visible: filesPage.selectedEntry.path; Layout.preferredWidth: 76; Layout.preferredHeight: 40; radius: 13; color: "#EAF8F1"; Text { anchors.centerIn: parent; text: "移动"; color: "#238C69"; font.family: window.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold } MouseArea { anchors.fill: parent; onClicked: filesPage.stageTransfer(true) } }
+                    Rectangle { visible: filesPage.clipboardPath.length > 0; Layout.preferredWidth: 116; Layout.preferredHeight: 40; radius: 13; color: window.purple; opacity: systemBackend.fileOperationRunning ? 0.5 : 1; Text { anchors.centerIn: parent; text: systemBackend.fileOperationRunning ? systemBackend.fileOperationText : "粘贴到这里"; color: "white"; font.family: window.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold } MouseArea { anchors.fill: parent; enabled: !systemBackend.fileOperationRunning; onClicked: filesPage.pasteHere() } }
+                    Rectangle { Layout.preferredWidth: 68; Layout.preferredHeight: 40; radius: 13; color: "#F0EDF3"; Text { anchors.centerIn: parent; text: "取消"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 14; font.weight: Font.DemiBold } MouseArea { anchors.fill: parent; onClicked: { filesPage.selectedEntry = ({}); filesPage.clipboardPath = ""; filesPage.clipboardName = "" } } }
                 }
             }
             Rectangle {

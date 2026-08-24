@@ -814,6 +814,58 @@ QVariantMap runEthernetLinkOperation(const QString &interfaceName, bool connect)
     return result;
 }
 
+bool isUserFilePath(const QString &path)
+{
+    const QString clean = QDir::cleanPath(path);
+    return clean == QStringLiteral("/home/radxa") || clean.startsWith(QStringLiteral("/home/radxa/"))
+            || clean == QStringLiteral("/data") || clean.startsWith(QStringLiteral("/data/"));
+}
+
+bool copyFileTree(const QString &source, const QString &destination, QString *error)
+{
+    const QFileInfo sourceInfo(source);
+    if (sourceInfo.isSymLink()) {
+        if (error) *error = QStringLiteral("暂不支持复制符号链接");
+        return false;
+    }
+    if (!sourceInfo.isDir()) {
+        if (QFile::copy(source, destination)) return true;
+        if (error) *error = QStringLiteral("无法复制文件");
+        return false;
+    }
+    if (!QDir().mkpath(destination)) {
+        if (error) *error = QStringLiteral("无法创建目标文件夹");
+        return false;
+    }
+    const QDir directory(source);
+    const QFileInfoList children = directory.entryInfoList(
+        QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System,
+        QDir::DirsFirst | QDir::Name);
+    for (const QFileInfo &child : children) {
+        if (!copyFileTree(child.absoluteFilePath(),
+                          QDir(destination).filePath(child.fileName()), error))
+            return false;
+    }
+    return true;
+}
+
+QString availableDestination(const QString &directory, const QString &name)
+{
+    QString candidate = QDir(directory).filePath(name);
+    if (!QFileInfo::exists(candidate)) return candidate;
+    const QFileInfo original(name);
+    const QString base = original.completeBaseName().isEmpty() ? name : original.completeBaseName();
+    const QString suffix = original.suffix();
+    for (int copy = 2; copy < 10000; ++copy) {
+        const QString renamed = suffix.isEmpty()
+                ? QStringLiteral("%1 (%2)").arg(base).arg(copy)
+                : QStringLiteral("%1 (%2).%3").arg(base).arg(copy).arg(suffix);
+        candidate = QDir(directory).filePath(renamed);
+        if (!QFileInfo::exists(candidate)) return candidate;
+    }
+    return QString();
+}
+
 } // namespace
 
 SystemBackend::SystemBackend(QObject *parent)
@@ -825,6 +877,8 @@ SystemBackend::SystemBackend(QObject *parent)
     m_batteryCalibrationStatus = calibration.value(QStringLiteral("status"), QStringLiteral("未校准")).toString();
     m_batteryCalibrationSummary = calibration.value(QStringLiteral("summary")).toString();
     m_batteryDesignCapacityMah = calibration.value(QStringLiteral("designCapacityMah"), 10000).toInt();
+    QSettings fileSettings(QStringLiteral("Meow OS"), QStringLiteral("files"));
+    m_favoriteLocations = fileSettings.value(QStringLiteral("favorites")).toList();
     m_lastInputMs = QDateTime::currentMSecsSinceEpoch();
     if (qApp) qApp->installEventFilter(this);
     m_volumeSetTimer.setSingleShot(true);
@@ -904,6 +958,15 @@ SystemBackend::SystemBackend(QObject *parent)
         m_previewLoading = false;
         emit previewChanged();
     });
+    connect(&m_fileOperationWatcher, &QFutureWatcher<QVariantMap>::finished, this, [this]() {
+        const QVariantMap result = m_fileOperationWatcher.result();
+        const bool ok = result.value(QStringLiteral("ok")).toBool();
+        m_fileOperationRunning = false;
+        m_fileOperationText.clear();
+        emit fileOperationChanged();
+        emit operationMessage(result.value(QStringLiteral("message")).toString(), ok);
+        if (!m_filePath.isEmpty()) browseDirectory(m_filePath);
+    });
     refresh();
 }
 
@@ -928,6 +991,9 @@ QString SystemBackend::previewPath() const { return m_previewPath; }
 QString SystemBackend::previewText() const { return m_previewText; }
 QString SystemBackend::previewError() const { return m_previewError; }
 bool SystemBackend::previewLoading() const { return m_previewLoading; }
+QVariantList SystemBackend::favoriteLocations() const { return m_favoriteLocations; }
+bool SystemBackend::fileOperationRunning() const { return m_fileOperationRunning; }
+QString SystemBackend::fileOperationText() const { return m_fileOperationText; }
 QString SystemBackend::wifiName() const { return m_wifiName; }
 bool SystemBackend::wifiConnected() const { return !m_wifiName.isEmpty(); }
 QString SystemBackend::wifiIpv4() const { return m_wifiIpv4; }
@@ -1648,6 +1714,102 @@ void SystemBackend::previewDocument(const QString &requestedPath)
         if (text.isNull()) text = QString::fromLocal8Bit(bytes);
         if (truncated) text.append(QStringLiteral("\n\n—— 内容过长，仅预览前 256 KB ——"));
         result.insert(QStringLiteral("text"), text);
+        return result;
+    }));
+}
+
+void SystemBackend::addFavoriteLocation(const QString &requestedPath, const QString &requestedLabel)
+{
+    QString path = QDir::cleanPath(requestedPath);
+    if (!QDir(path).isAbsolute() || !QFileInfo(path).isDir()) {
+        emit operationMessage(QStringLiteral("无法收藏此位置"), false);
+        return;
+    }
+    for (const QVariant &favorite : m_favoriteLocations) {
+        if (favorite.toMap().value(QStringLiteral("path")).toString() == path) {
+            emit operationMessage(QStringLiteral("此位置已经收藏"), false);
+            return;
+        }
+    }
+    QVariantMap favorite;
+    const QString fallback = QFileInfo(path).fileName().isEmpty() ? QStringLiteral("系统盘")
+                                                                   : QFileInfo(path).fileName();
+    favorite.insert(QStringLiteral("path"), path);
+    favorite.insert(QStringLiteral("label"), requestedLabel.trimmed().isEmpty() ? fallback
+                                                                                  : requestedLabel.trimmed());
+    m_favoriteLocations.append(favorite);
+    QSettings(QStringLiteral("Meow OS"), QStringLiteral("files"))
+            .setValue(QStringLiteral("favorites"), m_favoriteLocations);
+    emit favoritesChanged();
+    emit operationMessage(QStringLiteral("已加入收藏"), true);
+}
+
+void SystemBackend::removeFavoriteLocation(const QString &requestedPath)
+{
+    const QString path = QDir::cleanPath(requestedPath);
+    for (int index = 0; index < m_favoriteLocations.size(); ++index) {
+        if (m_favoriteLocations.at(index).toMap().value(QStringLiteral("path")).toString() != path)
+            continue;
+        m_favoriteLocations.removeAt(index);
+        QSettings(QStringLiteral("Meow OS"), QStringLiteral("files"))
+                .setValue(QStringLiteral("favorites"), m_favoriteLocations);
+        emit favoritesChanged();
+        emit operationMessage(QStringLiteral("已移除收藏"), true);
+        return;
+    }
+}
+
+void SystemBackend::transferFile(const QString &requestedSource, const QString &requestedDestination,
+                                 bool move)
+{
+    if (m_fileOperationWatcher.isRunning()) return;
+    const QString source = QDir::cleanPath(requestedSource);
+    const QString destinationDirectory = QDir::cleanPath(requestedDestination);
+    if (!isUserFilePath(source) || !isUserFilePath(destinationDirectory)
+            || source == QStringLiteral("/home/radxa") || source == QStringLiteral("/data")
+            || !QFileInfo::exists(source) || !QFileInfo(destinationDirectory).isDir()) {
+        emit operationMessage(QStringLiteral("只能在用户目录和数据盘内复制或移动"), false);
+        return;
+    }
+    if (destinationDirectory == source || destinationDirectory.startsWith(source + QLatin1Char('/'))) {
+        emit operationMessage(QStringLiteral("不能粘贴到项目自身内部"), false);
+        return;
+    }
+    m_fileOperationRunning = true;
+    m_fileOperationText = move ? QStringLiteral("正在移动…") : QStringLiteral("正在复制…");
+    emit fileOperationChanged();
+    m_fileOperationWatcher.setFuture(QtConcurrent::run([source, destinationDirectory, move]() {
+        QVariantMap result;
+        const QString destination = availableDestination(destinationDirectory, QFileInfo(source).fileName());
+        if (destination.isEmpty()) {
+            result.insert(QStringLiteral("ok"), false);
+            result.insert(QStringLiteral("message"), QStringLiteral("无法生成目标名称"));
+            return result;
+        }
+        if (move && QFile::rename(source, destination)) {
+            result.insert(QStringLiteral("ok"), true);
+            result.insert(QStringLiteral("message"), QStringLiteral("移动完成"));
+            return result;
+        }
+        QString error;
+        if (!copyFileTree(source, destination, &error)) {
+            QFileInfo(destination).isDir() ? QDir(destination).removeRecursively() : QFile::remove(destination);
+            result.insert(QStringLiteral("ok"), false);
+            result.insert(QStringLiteral("message"), error);
+            return result;
+        }
+        if (move) {
+            const bool removed = QFileInfo(source).isDir() ? QDir(source).removeRecursively()
+                                                           : QFile::remove(source);
+            if (!removed) {
+                result.insert(QStringLiteral("ok"), false);
+                result.insert(QStringLiteral("message"), QStringLiteral("已复制，但无法删除原项目"));
+                return result;
+            }
+        }
+        result.insert(QStringLiteral("ok"), true);
+        result.insert(QStringLiteral("message"), move ? QStringLiteral("移动完成")
+                                                       : QStringLiteral("复制完成"));
         return result;
     }));
 }

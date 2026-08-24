@@ -33,6 +33,9 @@ class SystemBackend final : public QObject
     Q_PROPERTY(QString previewText READ previewText NOTIFY previewChanged)
     Q_PROPERTY(QString previewError READ previewError NOTIFY previewChanged)
     Q_PROPERTY(bool previewLoading READ previewLoading NOTIFY previewChanged)
+    Q_PROPERTY(QVariantList favoriteLocations READ favoriteLocations NOTIFY favoritesChanged)
+    Q_PROPERTY(bool fileOperationRunning READ fileOperationRunning NOTIFY fileOperationChanged)
+    Q_PROPERTY(QString fileOperationText READ fileOperationText NOTIFY fileOperationChanged)
     Q_PROPERTY(QString wifiName READ wifiName NOTIFY wifiChanged)
     Q_PROPERTY(bool wifiConnected READ wifiConnected NOTIFY wifiChanged)
     Q_PROPERTY(QString wifiIpv4 READ wifiIpv4 NOTIFY wifiChanged)
@@ -117,6 +120,9 @@ public:
     QString previewText() const;
     QString previewError() const;
     bool previewLoading() const;
+    QVariantList favoriteLocations() const;
+    bool fileOperationRunning() const;
+    QString fileOperationText() const;
     QString wifiName() const;
     bool wifiConnected() const;
     QString wifiIpv4() const;
@@ -197,12 +203,18 @@ public:
     Q_INVOKABLE void clearBatteryCalibration();
     Q_INVOKABLE void browseDirectory(const QString &path);
     Q_INVOKABLE void previewDocument(const QString &path);
+    Q_INVOKABLE void addFavoriteLocation(const QString &path, const QString &label);
+    Q_INVOKABLE void removeFavoriteLocation(const QString &path);
+    Q_INVOKABLE void transferFile(const QString &sourcePath, const QString &destinationDirectory,
+                                  bool move);
 
 signals:
     void systemInfoChanged();
     void storageChanged();
     void filesChanged();
     void previewChanged();
+    void favoritesChanged();
+    void fileOperationChanged();
     void wifiChanged();
     void ethernetChanged();
     void powerChanged();
@@ -240,6 +252,9 @@ private:
     QString m_previewText;
     QString m_previewError;
     bool m_previewLoading = false;
+    QVariantList m_favoriteLocations;
+    bool m_fileOperationRunning = false;
+    QString m_fileOperationText;
     QString m_wifiName;
     QString m_wifiIpv4;
     QString m_wifiGateway;
@@ -308,6 +323,7 @@ private:
     QFutureWatcher<QVariantMap> m_ethernetOperationWatcher;
     QFutureWatcher<QVariantMap> m_directoryWatcher;
     QFutureWatcher<QVariantMap> m_previewWatcher;
+    QFutureWatcher<QVariantMap> m_fileOperationWatcher;
     int m_pendingVolumePercent = 65;
     QTimer m_volumeSetTimer;
     QProcess m_volumeSetProcess;
