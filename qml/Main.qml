@@ -1527,35 +1527,38 @@ ApplicationWindow {
 
     Component {
         id: aboutSettings
-        SettingsPageBody {
-            title: "关于本机"
-            subtitle: systemBackend.boardProfile
-            Rectangle {
-                width: parent.width; height: 138; radius: 22
-                color: "#FFF7FA"; border.color: "#F3D5E1"; border.width: 1
-                RowLayout {
-                    anchors.fill: parent; anchors.margins: 20; spacing: 22
-                    Image { Layout.preferredWidth: 96; Layout.preferredHeight: 96; source: "qrc:/assets/meowkj-avatar-circle.png"; fillMode: Image.PreserveAspectFit; smooth: true }
-                    ColumnLayout {
-                        Layout.fillWidth: true; spacing: 4
-                        Text { text: "Meow OS"; color: window.ink; font.family: window.uiFont; font.pixelSize: 30; font.weight: Font.Bold }
-                        Text { text: "为这台设备打造"; color: "#B35A78"; font.family: window.uiFont; font.pixelSize: 17 }
-                        Text { text: systemBackend.hostname.length ? systemBackend.hostname : "radxa"; color: window.secondary; font.family: window.uiFont; font.pixelSize: 15 }
+        SettingsFlickable {
+            id: aboutFlick
+            contentWidth: width
+            contentHeight: aboutBody.y + aboutBody.height + 30
+            SettingsPageBody {
+                id: aboutBody
+                title: "关于本机"
+                subtitle: systemBackend.boardProfile
+                Rectangle {
+                    width: parent.width; height: 116; radius: 22
+                    color: "#FFF7FA"; border.color: "#F3D5E1"; border.width: 1
+                    RowLayout {
+                        anchors.fill: parent; anchors.margins: 18; spacing: 18
+                        Image { Layout.preferredWidth: 78; Layout.preferredHeight: 78; source: "qrc:/assets/meowkj-avatar-circle.png"; fillMode: Image.PreserveAspectFit; smooth: true }
+                        ColumnLayout {
+                            Layout.fillWidth: true; spacing: 4
+                            Text { text: "Meow OS"; color: window.ink; font.family: window.uiFont; font.pixelSize: 28; font.weight: Font.Bold }
+                            Text { text: systemBackend.boardProfile; color: "#B35A78"; font.family: window.uiFont; font.pixelSize: 16; elide: Text.ElideRight; Layout.fillWidth: true }
+                        }
                     }
                 }
-            }
-            IosGroup {
-                width: parent.width
-                IosInfoRow { label: "系统版本"; value: "Meow OS " + systemBackend.version; valueColor: window.pink; emphasize: true }
-                IosInfoRow { label: "主机名"; value: systemBackend.hostname }
-                IosInfoRow { label: "Linux 内核"; value: systemBackend.kernel; last: true }
-            }
-            IosGroup {
-                width: parent.width
-                IosInfoRow { label: "硬件能力层"; value: "已启用"; valueColor: window.mint }
-                IosInfoRow { label: "触摸"; value: systemBackend.hardwareCapabilities.touch ? "可用" : "未检测到" }
-                IosInfoRow { label: "PCIe / NVMe"; value: systemBackend.hardwareCapabilities.pcie ? "可探测" : "未检测到" }
-                IosInfoRow { label: "USB3"; value: systemBackend.hardwareCapabilities.usb3 ? "可探测" : "未检测到"; last: true }
+                IosGroup {
+                    width: parent.width
+                    IosInfoRow { label: "系统版本"; value: "Meow OS " + systemBackend.version; valueColor: window.pink; emphasize: true }
+                    IosInfoRow { label: "主机名"; value: systemBackend.hostname.length ? systemBackend.hostname : "--" }
+                    IosInfoRow { label: "Linux 内核"; value: systemBackend.kernel.length ? systemBackend.kernel : "--"; last: true }
+                }
+                IosGroup {
+                    width: parent.width
+                    IosInfoRow { label: "显示输出"; value: systemBackend.hardwareCapabilities.display ? "可用" : "未检测到" }
+                    IosInfoRow { label: "触摸输入"; value: systemBackend.hardwareCapabilities.touch ? "可用" : "未检测到"; last: true }
+                }
             }
         }
     }
