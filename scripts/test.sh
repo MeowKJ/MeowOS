@@ -45,8 +45,8 @@ grep -q 'PerformanceCoreMatrix' qml/apps/SettingsApp.qml
 grep -q 'IosSwitch' qml/components/qmldir
 grep -q 'PerformanceCpuCard' qml/components/qmldir
 ! grep -q 'id: pagePrewarm' qml/apps/SettingsApp.qml
-test "$(grep -c 'PageLoader; active: false' qml/apps/SettingsApp.qml)" -eq 9
-test "$(grep -c 'PageLoader; active: false; asynchronous: true' qml/apps/SettingsApp.qml)" -eq 9
+test "$(grep -c 'PageLoader; active: false' qml/apps/SettingsApp.qml)" -eq 8
+test "$(grep -c 'PageLoader; active: false; asynchronous: true' qml/apps/SettingsApp.qml)" -eq 8
 grep -q 'function openSection(name, index)' qml/apps/SettingsApp.qml
 grep -q 'prewarmTimer' qml/apps/SettingsApp.qml
 grep -q 'settings-switch' qml/apps/SettingsApp.qml
