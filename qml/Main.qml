@@ -465,16 +465,6 @@ ApplicationWindow {
                 smooth: true
             }
 
-            // Top soft vignette for status bar readability
-            Rectangle {
-                anchors { left: parent.left; right: parent.right; top: parent.top }
-                height: 80
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: "#4D000000" }
-                    GradientStop { position: 1.0; color: "#00000000" }
-                }
-            }
-
             // Classic mobile OS desktop app icon grid
             Row {
                 anchors {
