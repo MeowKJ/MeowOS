@@ -28,27 +28,30 @@ grep -q 'calibrateBattery' src/systembackend.h
 grep -q 'QT_QUICK_BACKEND' scripts/meow-display-launcher
 grep -q 'performanceHistory' src/systembackend.h
 grep -q 'cpuFrequencies' src/systembackend.h
-grep -q 'maximumFlickVelocity' qml/Main.qml
-grep -q 'pressDelay: 0' qml/Main.qml
+grep -q 'maximumFlickVelocity' qml/components/SettingsFlickable.qml
+grep -q 'pressDelay: 0' qml/components/SettingsFlickable.qml
 grep -q 'stack.depth > 1' qml/Main.qml
 grep -q 'inputLimit2400mA = 0x17' src/systembackend.cpp
 grep -q 'chargeCurrent2400mA = 0x28' src/systembackend.cpp
 grep -q 'reg05 & 0xcf' src/systembackend.cpp
 grep -q 'zap-green.svg' qml.qrc
-grep -q 'visible: !systemBackend.batteryCharging' qml/Main.qml
+grep -q 'visible: !systemBackend.batteryCharging' qml/apps/SettingsApp.qml
 grep -q 'readonly property bool settingsForeground' qml/Main.qml
-grep -q 'running: window.settingsForeground && window.lastSettingsSection === "performance"' qml/Main.qml
-grep -q 'boundsBehavior: Flickable.DragAndOvershootBounds' qml/Main.qml
-grep -q 'id: performanceReturnTimer' qml/Main.qml
-grep -q 'performanceFlick.returnToBounds()' qml/Main.qml
-! grep -q 'id: pagePrewarm' qml/Main.qml
-test "$(grep -c 'PageLoader; active: false' qml/Main.qml)" -eq 9
-test "$(grep -c 'PageLoader; active: false; asynchronous: true' qml/Main.qml)" -eq 9
-grep -q 'function openSection(name, index)' qml/Main.qml
-grep -q 'prewarmTimer' qml/Main.qml
-grep -q 'settings-switch' qml/Main.qml
-grep -q 'qaSwitchTimer' qml/Main.qml
-! grep -q '驱动未提供忙碌率' qml/Main.qml
+grep -q 'running: window.settingsForeground && window.lastSettingsSection === "performance"' qml/apps/SettingsApp.qml
+grep -q 'boundsBehavior: Flickable.DragAndOvershootBounds' qml/components/SettingsFlickable.qml
+grep -q 'PerformanceCpuCard' qml/apps/SettingsApp.qml
+grep -q 'PerformanceRamGpuCard' qml/apps/SettingsApp.qml
+grep -q 'PerformanceCoreMatrix' qml/apps/SettingsApp.qml
+grep -q 'IosSwitch' qml/components/qmldir
+grep -q 'PerformanceCpuCard' qml/components/qmldir
+! grep -q 'id: pagePrewarm' qml/apps/SettingsApp.qml
+test "$(grep -c 'PageLoader; active: false' qml/apps/SettingsApp.qml)" -eq 9
+test "$(grep -c 'PageLoader; active: false; asynchronous: true' qml/apps/SettingsApp.qml)" -eq 9
+grep -q 'function openSection(name, index)' qml/apps/SettingsApp.qml
+grep -q 'prewarmTimer' qml/apps/SettingsApp.qml
+grep -q 'settings-switch' qml/apps/SettingsApp.qml
+grep -q 'qaSwitchTimer' qml/apps/SettingsApp.qml
+! grep -q '驱动未提供忙碌率' qml/apps/SettingsApp.qml
 grep -q '\$1 == "timeout" { \$2 = "0" }' scripts/configure-boot-branding
 grep -q 'U_BOOT_TIMEOUT=' scripts/configure-boot-branding
 grep -q 'mask hdmi-toggle-once.service' scripts/configure-boot-branding

@@ -379,18 +379,23 @@ QVariantMap collectStatus(const QString &scope)
     if (scope != QStringLiteral("idle")) {
         const ProcessResult wifiResult = runProcessDetailed(QStringLiteral("nmcli"),
                                                              {QStringLiteral("-t"), QStringLiteral("-e"), QStringLiteral("yes"),
-                                                              QStringLiteral("-f"), QStringLiteral("ACTIVE,SSID"),
+                                                              QStringLiteral("-f"), QStringLiteral("ACTIVE,SSID,SIGNAL"),
                                                               QStringLiteral("device"), QStringLiteral("wifi")}, 2500);
         const QString wifi = wifiResult.output;
         QString currentWifi;
+        int currentSignal = 0;
         for (const QString &line : wifi.split(QRegularExpression(QStringLiteral("\\r?\\n")), Qt::SkipEmptyParts)) {
             const QStringList fields = splitNmcliTerseLine(line);
-            if (fields.size() >= 2 && fields.at(0) == QStringLiteral("yes")) {
+            if (fields.size() >= 2 && (fields.at(0) == QStringLiteral("yes") || fields.at(0) == QStringLiteral("*"))) {
                 currentWifi = fields.at(1);
+                if (fields.size() >= 3) currentSignal = fields.at(2).toInt();
                 break;
             }
         }
-        if (wifiResult.ok()) result.insert(QStringLiteral("wifiName"), currentWifi);
+        if (wifiResult.ok()) {
+            result.insert(QStringLiteral("wifiName"), currentWifi);
+            result.insert(QStringLiteral("wifiSignal"), currentSignal);
+        }
 
         if (!currentWifi.isEmpty() && scope == QStringLiteral("wifi")) {
             QString wifiDevice;
@@ -876,7 +881,15 @@ SystemBackend::SystemBackend(QObject *parent)
     QSettings calibration(QStringLiteral("Meow OS"), QStringLiteral("battery"));
     m_batteryCalibrationStatus = calibration.value(QStringLiteral("status"), QStringLiteral("未校准")).toString();
     m_batteryCalibrationSummary = calibration.value(QStringLiteral("summary")).toString();
-    m_batteryDesignCapacityMah = calibration.value(QStringLiteral("designCapacityMah"), 10000).toInt();
+    QSettings displaySettings(QStringLiteral("Meow OS"), QStringLiteral("display"));
+    m_sleepTimeoutSeconds = displaySettings.value(QStringLiteral("sleepTimeoutSeconds"), 60).toInt();
+    m_sleepPowerLevel = displaySettings.value(QStringLiteral("sleepPowerLevel"), 1).toInt();
+    if (displaySettings.contains(QStringLiteral("keepScreenOnApps"))) {
+        m_keepScreenOnApps = displaySettings.value(QStringLiteral("keepScreenOnApps")).toStringList();
+    } else {
+        m_keepScreenOnApps = QStringList{QStringLiteral("touch-test"), QStringLiteral("reaction-game")};
+        displaySettings.setValue(QStringLiteral("keepScreenOnApps"), m_keepScreenOnApps);
+    }
     QSettings fileSettings(QStringLiteral("Meow OS"), QStringLiteral("files"));
     m_favoriteLocations = fileSettings.value(QStringLiteral("favorites")).toList();
     const int favoriteDefaultsVersion = fileSettings.value(QStringLiteral("favoriteDefaultsVersion"), 0).toInt();
@@ -1012,6 +1025,7 @@ bool SystemBackend::fileOperationRunning() const { return m_fileOperationRunning
 QString SystemBackend::fileOperationText() const { return m_fileOperationText; }
 QString SystemBackend::wifiName() const { return m_wifiName; }
 bool SystemBackend::wifiConnected() const { return !m_wifiName.isEmpty(); }
+int SystemBackend::wifiSignal() const { return m_wifiSignal; }
 QString SystemBackend::wifiIpv4() const { return m_wifiIpv4; }
 QString SystemBackend::wifiGateway() const { return m_wifiGateway; }
 QString SystemBackend::wifiMac() const { return m_wifiMac; }
@@ -1118,6 +1132,10 @@ bool SystemBackend::eventFilter(QObject *watched, QEvent *event)
     case QEvent::TouchBegin:
     case QEvent::KeyPress:
         m_lastInputMs = QDateTime::currentMSecsSinceEpoch();
+        if (m_screenSleeping) {
+            wakeScreen();
+            return true;
+        }
         emit inputActivity();
         break;
     case QEvent::MouseButtonRelease:
@@ -1407,6 +1425,7 @@ void SystemBackend::applyStatusSnapshot(const QVariantMap &snapshot)
 {
     if (snapshot.contains(QStringLiteral("wifiName"))) {
         QString wifiName = snapshot.value(QStringLiteral("wifiName")).toString();
+        int wifiSignal = snapshot.value(QStringLiteral("wifiSignal"), m_wifiSignal).toInt();
         QString wifiIpv4 = m_wifiIpv4;
         QString wifiGateway = m_wifiGateway;
         QString wifiMac = m_wifiMac;
@@ -1421,13 +1440,15 @@ void SystemBackend::applyStatusSnapshot(const QVariantMap &snapshot)
             else {
                 wifiIpv4.clear();
                 wifiGateway.clear();
+                wifiSignal = 0;
             }
         } else {
             m_wifiEmptyPollCount = 0;
         }
-        if (wifiName != m_wifiName || wifiIpv4 != m_wifiIpv4 || wifiGateway != m_wifiGateway
+        if (wifiName != m_wifiName || wifiSignal != m_wifiSignal || wifiIpv4 != m_wifiIpv4 || wifiGateway != m_wifiGateway
                 || wifiMac != m_wifiMac || wifiDevice != m_wifiDevice) {
             m_wifiName = wifiName;
+            m_wifiSignal = wifiSignal;
             m_wifiIpv4 = wifiIpv4;
             m_wifiGateway = wifiGateway;
             m_wifiMac = wifiMac;
@@ -1602,6 +1623,167 @@ void SystemBackend::setDisplayBrightness(int percent)
         emit displayChanged();
     }
     m_brightnessSetTimer.start();
+}
+
+bool SystemBackend::isScreenSleeping() const
+{
+    return m_screenSleeping;
+}
+
+int SystemBackend::sleepTimeoutSeconds() const
+{
+    return m_sleepTimeoutSeconds;
+}
+
+int SystemBackend::sleepTimeoutIndex() const
+{
+    if (m_sleepTimeoutSeconds == 30) return 0;
+    if (m_sleepTimeoutSeconds == 60) return 1;
+    if (m_sleepTimeoutSeconds == 180) return 2;
+    if (m_sleepTimeoutSeconds <= 0) return 3;
+    return 1;
+}
+
+void SystemBackend::setSleepTimeoutSeconds(int seconds)
+{
+    if (m_sleepTimeoutSeconds == seconds) return;
+    m_sleepTimeoutSeconds = seconds;
+    QSettings displaySettings(QStringLiteral("Meow OS"), QStringLiteral("display"));
+    displaySettings.setValue(QStringLiteral("sleepTimeoutSeconds"), m_sleepTimeoutSeconds);
+    emit sleepTimeoutChanged();
+}
+
+void SystemBackend::setSleepTimeoutIndex(int index)
+{
+    int seconds = 60;
+    if (index == 0) seconds = 30;
+    else if (index == 1) seconds = 60;
+    else if (index == 2) seconds = 180;
+    else if (index == 3) seconds = 0;
+    setSleepTimeoutSeconds(seconds);
+}
+
+int SystemBackend::sleepPowerLevel() const
+{
+    return m_sleepPowerLevel;
+}
+
+void SystemBackend::setSleepPowerLevel(int level)
+{
+    if (m_sleepPowerLevel == level) return;
+    m_sleepPowerLevel = level;
+    QSettings displaySettings(QStringLiteral("Meow OS"), QStringLiteral("display"));
+    displaySettings.setValue(QStringLiteral("sleepPowerLevel"), m_sleepPowerLevel);
+    emit sleepPowerLevelChanged();
+}
+
+QStringList SystemBackend::keepScreenOnApps() const
+{
+    return m_keepScreenOnApps;
+}
+
+void SystemBackend::setAppKeepScreenOn(const QString &appId, bool enabled)
+{
+    if (appId.isEmpty()) return;
+    bool changed = false;
+    if (enabled && !m_keepScreenOnApps.contains(appId)) {
+        m_keepScreenOnApps.append(appId);
+        changed = true;
+    } else if (!enabled && m_keepScreenOnApps.contains(appId)) {
+        m_keepScreenOnApps.removeAll(appId);
+        changed = true;
+    }
+    if (changed) {
+        QSettings displaySettings(QStringLiteral("Meow OS"), QStringLiteral("display"));
+        displaySettings.setValue(QStringLiteral("keepScreenOnApps"), m_keepScreenOnApps);
+        emit keepScreenOnAppsChanged();
+    }
+}
+
+bool SystemBackend::isAppKeepScreenOn(const QString &appId) const
+{
+    return m_keepScreenOnApps.contains(appId);
+}
+
+bool SystemBackend::isWakeLockActive() const
+{
+    return m_wakeLockActive;
+}
+
+void SystemBackend::setWakeLockActive(bool active)
+{
+    if (m_wakeLockActive == active) return;
+    m_wakeLockActive = active;
+    emit wakeLockActiveChanged();
+}
+
+void SystemBackend::setScreenSleeping(bool sleeping)
+{
+    if (m_screenSleeping == sleeping) return;
+    m_screenSleeping = sleeping;
+    if (m_screenSleeping) {
+        m_brightnessBeforeSleep = m_displayBrightnessPercent > 0 ? m_displayBrightnessPercent : 50;
+        if (!m_backlightPath.isEmpty() && m_brightnessMax > 0) {
+            QFile brightness(m_backlightPath);
+            if (brightness.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                brightness.write("0");
+                brightness.close();
+            }
+        }
+        m_savedScopeBeforeSleep = m_activeScope;
+        m_activeScope = QStringLiteral("sleeping");
+
+        // True System-Level Deep Low-Power Throttling
+        if (m_sleepPowerLevel == 1) {
+            m_savedCpufreqLimits.clear();
+            const QStringList policyDirs = {QStringLiteral("/sys/devices/system/cpu/cpufreq/policy0"),
+                                            QStringLiteral("/sys/devices/system/cpu/cpufreq/policy4"),
+                                            QStringLiteral("/sys/devices/system/cpu/cpu0/cpufreq"),
+                                            QStringLiteral("/sys/devices/system/cpu/cpu4/cpufreq")};
+            for (const QString &dirPath : policyDirs) {
+                const QString maxFreqPath = dirPath + QStringLiteral("/scaling_max_freq");
+                QFile maxFreqFile(maxFreqPath);
+                if (maxFreqFile.exists() && maxFreqFile.open(QIODevice::ReadWrite | QIODevice::Text)) {
+                    QByteArray current = maxFreqFile.readAll().trimmed();
+                    if (!current.isEmpty()) {
+                        m_savedCpufreqLimits.append(qMakePair(maxFreqPath, current));
+                        maxFreqFile.seek(0);
+                        maxFreqFile.write("408000\n");
+                    }
+                    maxFreqFile.close();
+                }
+            }
+        }
+    } else {
+        // Restore CPU Frequency scaling limits on wake
+        for (const auto &pair : m_savedCpufreqLimits) {
+            QFile maxFreqFile(pair.first);
+            if (maxFreqFile.exists() && maxFreqFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                maxFreqFile.write(pair.second + "\n");
+                maxFreqFile.close();
+            }
+        }
+        m_savedCpufreqLimits.clear();
+
+        if (!m_backlightPath.isEmpty() && m_brightnessMax > 0) {
+            const int targetPercent = m_brightnessBeforeSleep > 0 ? m_brightnessBeforeSleep : 50;
+            const int level = qBound(1, qRound(m_brightnessMax * targetPercent / 100.0), m_brightnessMax);
+            QFile brightness(m_backlightPath);
+            if (brightness.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                brightness.write(QByteArray::number(level));
+                brightness.close();
+            }
+        }
+        m_activeScope = m_savedScopeBeforeSleep.isEmpty() ? QStringLiteral("home") : m_savedScopeBeforeSleep;
+        m_lastInputMs = QDateTime::currentMSecsSinceEpoch();
+        refreshStatus();
+    }
+    emit screenSleepingChanged();
+}
+
+void SystemBackend::wakeScreen()
+{
+    setScreenSleeping(false);
 }
 
 bool SystemBackend::calibrateBattery(int referenceVoltageMv, int referenceCurrentMa,

@@ -1,15 +1,47 @@
 <RCC>
     <qresource prefix="/">
         <file>qml/Main.qml</file>
+        <file>qml/components/qmldir</file>
+        <file>qml/components/StatusBar.qml</file>
+        <file>qml/components/AppHeader.qml</file>
+        <file>qml/components/CompactBackButton.qml</file>
+        <file>qml/components/AppLauncher.qml</file>
+        <file>qml/components/IpadKey.qml</file>
+        <file>qml/components/KeyboardKey.qml</file>
+        <file>qml/components/NetworkField.qml</file>
+        <file>qml/components/EthernetPortCard.qml</file>
+        <file>qml/components/WifiManagePanel.qml</file>
+        <file>qml/components/SettingsFlickable.qml</file>
+        <file>qml/components/SettingsNavRow.qml</file>
+        <file>qml/components/SettingsPageBody.qml</file>
+        <file>qml/components/IosGroup.qml</file>
+        <file>qml/components/IosInfoRow.qml</file>
+        <file>qml/components/IosNavRow.qml</file>
+        <file>qml/components/IosActionRow.qml</file>
+        <file>qml/components/IosSwitch.qml</file>
+        <file>qml/components/PerformanceCpuCard.qml</file>
+        <file>qml/components/PerformanceRamGpuCard.qml</file>
+        <file>qml/components/PerformanceCoreMatrix.qml</file>
+        <file>qml/components/PerfMetric.qml</file>
+        <file>qml/components/StorageDiskCard.qml</file>
+        <file>qml/apps/qmldir</file>
+        <file>qml/apps/TouchTestApp.qml</file>
+        <file>qml/apps/ReactionGameApp.qml</file>
+        <file>qml/apps/FileManagerApp.qml</file>
+        <file>qml/apps/SettingsApp.qml</file>
+        <file>assets/wallpaper.jpg</file>
         <file>assets/meowkj-avatar.png</file>
         <file>assets/meowkj-avatar-circle.png</file>
         <file>assets/icons/wifi.svg</file>
         <file>assets/icons/volume-2.svg</file>
+        <file>assets/icons/volume-pink.svg</file>
         <file>assets/icons/settings.svg</file>
         <file>assets/icons/mouse-pointer-click.svg</file>
         <file>assets/icons/chevron-left.svg</file>
         <file>assets/icons/battery-charging.svg</file>
         <file>assets/icons/cpu.svg</file>
+        <file>assets/icons/ram-chip.svg</file>
+        <file>assets/icons/ram-stick-white.svg</file>
         <file>assets/icons/monitor.svg</file>
         <file>assets/icons/info.svg</file>
         <file>assets/icons/hard-drive.svg</file>
@@ -20,6 +52,7 @@
         <file>assets/icons/sun.svg</file>
         <file>assets/icons/ethernet-port.svg</file>
         <file>assets/icons/delete.svg</file>
+        <file>assets/icons/delete-cute.svg</file>
         <file>assets/icons/folder.svg</file>
         <file>assets/icons/image.svg</file>
         <file>assets/icons/file-text.svg</file>

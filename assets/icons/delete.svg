@@ -1,6 +1,5 @@
-<!-- Lucide Static v0.468.0, ISC license -->
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#27222D" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-  <path d="M20 5H9l-7 7 7 7h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2Z"/>
-  <path d="m18 9-6 6"/>
-  <path d="m12 9 6 6"/>
+  <path d="M9.2 5.5C8.5 5.5 7.8 5.9 7.3 6.5L3.1 11.2C2.4 12 2.4 13.2 3.1 14L7.3 18.7C7.8 19.3 8.5 19.7 9.2 19.7H19C20.1 19.7 21 18.8 21 17.7V7.5C21 6.4 20.1 5.5 19 5.5H9.2Z"/>
+  <line x1="11.5" y1="10" x2="16.5" y2="15"/>
+  <line x1="16.5" y1="10" x2="11.5" y2="15"/>
 </svg>

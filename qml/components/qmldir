@@ -1,0 +1,23 @@
+module components
+StatusBar 1.0 StatusBar.qml
+AppHeader 1.0 AppHeader.qml
+CompactBackButton 1.0 CompactBackButton.qml
+AppLauncher 1.0 AppLauncher.qml
+IpadKey 1.0 IpadKey.qml
+KeyboardKey 1.0 KeyboardKey.qml
+NetworkField 1.0 NetworkField.qml
+EthernetPortCard 1.0 EthernetPortCard.qml
+WifiManagePanel 1.0 WifiManagePanel.qml
+SettingsFlickable 1.0 SettingsFlickable.qml
+SettingsNavRow 1.0 SettingsNavRow.qml
+SettingsPageBody 1.0 SettingsPageBody.qml
+IosGroup 1.0 IosGroup.qml
+IosInfoRow 1.0 IosInfoRow.qml
+IosNavRow 1.0 IosNavRow.qml
+IosActionRow 1.0 IosActionRow.qml
+IosSwitch 1.0 IosSwitch.qml
+PerformanceCpuCard 1.0 PerformanceCpuCard.qml
+PerformanceRamGpuCard 1.0 PerformanceRamGpuCard.qml
+PerformanceCoreMatrix 1.0 PerformanceCoreMatrix.qml
+PerfMetric 1.0 PerfMetric.qml
+StorageDiskCard 1.0 StorageDiskCard.qml

@@ -38,6 +38,7 @@ class SystemBackend final : public QObject
     Q_PROPERTY(QString fileOperationText READ fileOperationText NOTIFY fileOperationChanged)
     Q_PROPERTY(QString wifiName READ wifiName NOTIFY wifiChanged)
     Q_PROPERTY(bool wifiConnected READ wifiConnected NOTIFY wifiChanged)
+    Q_PROPERTY(int wifiSignal READ wifiSignal NOTIFY wifiChanged)
     Q_PROPERTY(QString wifiIpv4 READ wifiIpv4 NOTIFY wifiChanged)
     Q_PROPERTY(QString wifiGateway READ wifiGateway NOTIFY wifiChanged)
     Q_PROPERTY(QString wifiMac READ wifiMac NOTIFY wifiChanged)
@@ -78,6 +79,12 @@ class SystemBackend final : public QObject
     Q_PROPERTY(bool audioAvailable READ audioAvailable NOTIFY audioChanged)
     Q_PROPERTY(int displayBrightnessPercent READ displayBrightnessPercent NOTIFY displayChanged)
     Q_PROPERTY(bool brightnessAvailable READ brightnessAvailable NOTIFY displayChanged)
+    Q_PROPERTY(bool screenSleeping READ isScreenSleeping NOTIFY screenSleepingChanged)
+    Q_PROPERTY(int sleepTimeoutSeconds READ sleepTimeoutSeconds WRITE setSleepTimeoutSeconds NOTIFY sleepTimeoutChanged)
+    Q_PROPERTY(int sleepTimeoutIndex READ sleepTimeoutIndex WRITE setSleepTimeoutIndex NOTIFY sleepTimeoutChanged)
+    Q_PROPERTY(int sleepPowerLevel READ sleepPowerLevel WRITE setSleepPowerLevel NOTIFY sleepPowerLevelChanged)
+    Q_PROPERTY(QStringList keepScreenOnApps READ keepScreenOnApps NOTIFY keepScreenOnAppsChanged)
+    Q_PROPERTY(bool wakeLockActive READ isWakeLockActive WRITE setWakeLockActive NOTIFY wakeLockActiveChanged)
     Q_PROPERTY(int cpuTotal READ cpuTotal NOTIFY performanceChanged)
     Q_PROPERTY(QVariantList cpuUsage READ cpuUsage NOTIFY performanceChanged)
     Q_PROPERTY(QVariantList cpuFrequencies READ cpuFrequencies NOTIFY performanceChanged)
@@ -125,6 +132,7 @@ public:
     QString fileOperationText() const;
     QString wifiName() const;
     bool wifiConnected() const;
+    int wifiSignal() const;
     QString wifiIpv4() const;
     QString wifiGateway() const;
     QString wifiMac() const;
@@ -182,6 +190,12 @@ public:
     QString memoryTotal() const;
     QVariantList performanceHistory() const;
     int displayRotation() const;
+    bool isScreenSleeping() const;
+    int sleepTimeoutSeconds() const;
+    int sleepTimeoutIndex() const;
+    int sleepPowerLevel() const;
+    QStringList keepScreenOnApps() const;
+    bool isWakeLockActive() const;
 
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void refreshStatus();
@@ -198,6 +212,14 @@ public:
     Q_INVOKABLE void setVolume(int percent);
     Q_INVOKABLE void playVolumeFeedback();
     Q_INVOKABLE void setDisplayBrightness(int percent);
+    Q_INVOKABLE void setSleepTimeoutSeconds(int seconds);
+    Q_INVOKABLE void setSleepTimeoutIndex(int index);
+    Q_INVOKABLE void setSleepPowerLevel(int level);
+    Q_INVOKABLE void setAppKeepScreenOn(const QString &appId, bool enabled);
+    Q_INVOKABLE bool isAppKeepScreenOn(const QString &appId) const;
+    Q_INVOKABLE void setWakeLockActive(bool active);
+    Q_INVOKABLE void setScreenSleeping(bool sleeping);
+    Q_INVOKABLE void wakeScreen();
     Q_INVOKABLE bool calibrateBattery(int referenceVoltageMv, int referenceCurrentMa,
                                       int designCapacityMah, bool stable);
     Q_INVOKABLE void clearBatteryCalibration();
@@ -220,6 +242,11 @@ signals:
     void powerChanged();
     void audioChanged();
     void displayChanged();
+    void screenSleepingChanged();
+    void sleepTimeoutChanged();
+    void sleepPowerLevelChanged();
+    void keepScreenOnAppsChanged();
+    void wakeLockActiveChanged();
     void performanceChanged();
     void inputActivity();
     void operationMessage(const QString &message, bool success);
@@ -256,6 +283,7 @@ private:
     bool m_fileOperationRunning = false;
     QString m_fileOperationText;
     QString m_wifiName;
+    int m_wifiSignal = 0;
     QString m_wifiIpv4;
     QString m_wifiGateway;
     QString m_wifiMac;
@@ -330,4 +358,12 @@ private:
     QProcess m_feedbackProcess;
     int m_pendingBrightnessPercent = 30;
     QTimer m_brightnessSetTimer;
+    bool m_screenSleeping = false;
+    int m_sleepTimeoutSeconds = 60;
+    int m_sleepPowerLevel = 1;
+    QStringList m_keepScreenOnApps;
+    bool m_wakeLockActive = false;
+    QVector<QPair<QString, QByteArray>> m_savedCpufreqLimits;
+    int m_brightnessBeforeSleep = 50;
+    QString m_savedScopeBeforeSleep;
 };

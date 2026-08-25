@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2072D4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- RAM DIMM Board with side notches -->
+  <path d="M2 7a1 1 0 0 1 1-1h18a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V7z"/>
+  <!-- Onboard DRAM Memory IC Chips -->
+  <rect x="4.5" y="8.5" width="3.2" height="5" rx="0.5" fill="#2072D4" fill-opacity="0.25"/>
+  <rect x="10.4" y="8.5" width="3.2" height="5" rx="0.5" fill="#2072D4" fill-opacity="0.25"/>
+  <rect x="16.3" y="8.5" width="3.2" height="5" rx="0.5" fill="#2072D4" fill-opacity="0.25"/>
+  <!-- Gold Finger Edge Connectors with Center Key Notch -->
+  <path d="M4 16v2.5M7 16v2.5M10 16v2.5M14 16v2.5M17 16v2.5M20 16v2.5"/>
+</svg>
