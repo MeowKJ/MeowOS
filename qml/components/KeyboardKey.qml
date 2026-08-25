@@ -5,32 +5,54 @@ Rectangle {
     property string label: ""
     property url icon: ""
     property real keyWidth: 65
+    property real keyHeight: 50
     property bool active: false
     property bool accent: false
     property bool destructive: false
     signal tapped()
-    width: keyWidth; height: 50; radius: 13
-    scale: keyMouse.pressed ? 0.94 : 1.0
-    Behavior on scale { NumberAnimation { duration: 70; easing.type: Easing.OutCubic } }
+
+    width: keyWidth
+    height: keyHeight
+    radius: 13
+
+    scale: keyMouse.pressed ? 0.95 : 1.0
+    Behavior on scale { NumberAnimation { duration: 70; easing.type: Easing.OutQuad } }
+    Behavior on color { ColorAnimation { duration: 70 } }
+
     color: keyMouse.pressed
-           ? (accent ? "#6558D9" : (destructive ? "#C82333" : "#E2DFE8"))
-           : (accent ? "#7B6DF0" : (destructive ? "#EB4D5C" : (active ? "#DED8FF" : "#F2EFF5")))
-    border.color: active ? "#7B6DF0" : (accent ? "#9488F7" : "#DDD9E3")
-    border.width: active ? 2 : 1
+           ? (accent ? "#6352E8" : (destructive ? "#DC2626" : "#E2DFE8"))
+           : (accent ? "#7B6DF0" : (destructive ? "#EF4444" : (active ? "#EDE8FF" : "#F6F5F9")))
+
+    border.color: active || accent
+                  ? "#7B6DF0"
+                  : (destructive ? "#F87171" : "#E0DCE6")
+    border.width: active || accent ? 1.5 : 1
+
     Text {
-        visible: icon.toString().length === 0
+        visible: icon.toString().length === 0 || keyImg.status !== Image.Ready
         anchors.centerIn: parent
-        anchors.verticalCenterOffset: keyMouse.pressed ? 1 : 0
-        text: label
-        color: accent || destructive ? "white" : "#27222D"
+        text: label.length > 0 ? label : (destructive ? "⌫" : "")
+        color: accent || destructive ? "#FFFFFF" : "#1E1B2E"
         font.family: "Noto Sans CJK SC"
-        font.pixelSize: 17
-        font.weight: Font.DemiBold
+        font.pixelSize: label.length > 2 ? 14 : 18
+        font.weight: accent || destructive ? Font.Bold : Font.DemiBold
     }
+
     Image {
-        visible: icon.toString().length > 0
-        anchors.centerIn: parent; width: 24; height: 24
-        source: icon; sourceSize.width: 48; sourceSize.height: 48; smooth: true
+        id: keyImg
+        visible: icon.toString().length > 0 && status === Image.Ready
+        anchors.centerIn: parent
+        width: 22
+        height: 22
+        source: icon
+        sourceSize.width: 44
+        sourceSize.height: 44
+        smooth: true
     }
-    MouseArea { id: keyMouse; anchors.fill: parent; onClicked: keyboardKey.tapped() }
+
+    MouseArea {
+        id: keyMouse
+        anchors.fill: parent
+        onClicked: keyboardKey.tapped()
+    }
 }

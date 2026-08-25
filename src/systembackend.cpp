@@ -2011,3 +2011,16 @@ void SystemBackend::transferFile(const QString &requestedSource, const QString &
         return result;
     }));
 }
+
+void SystemBackend::saveAppData(const QString &key, const QString &data)
+{
+    QSettings settings(QStringLiteral("Meow OS"), QStringLiteral("apps"));
+    settings.setValue(key, data);
+}
+
+QString SystemBackend::loadAppData(const QString &key, const QString &defaultValue) const
+{
+    QSettings settings(QStringLiteral("Meow OS"), QStringLiteral("apps"));
+    return settings.value(key, defaultValue).toString();
+}
+

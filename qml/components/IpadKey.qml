@@ -3,52 +3,76 @@ import QtQuick 2.15
 Rectangle {
     id: ipadKey
     property string label: ""
+    property string subLabel: ""
     property url icon: ""
     property real keyWidth: 108
+    property real keyHeight: 52
     property bool functionKey: false
     property bool returnKey: false
     property bool destructive: false
     property bool active: false
     signal tapped()
-    width: keyWidth; height: 54; radius: 11
-    scale: ipadKeyMouse.pressed ? 0.94 : 1.0
-    Behavior on scale { NumberAnimation { duration: 70; easing.type: Easing.OutCubic } }
+
+    width: keyWidth
+    height: keyHeight
+    radius: 12
+
+    scale: ipadKeyMouse.pressed ? 0.95 : 1.0
+    Behavior on scale { NumberAnimation { duration: 70; easing.type: Easing.OutQuad } }
+    Behavior on color { ColorAnimation { duration: 70 } }
 
     color: ipadKeyMouse.pressed
-           ? (returnKey ? "#6B58F2" : (destructive ? "#C22838" : (functionKey ? "#4E4575" : "#443D68")))
+           ? (returnKey ? "#6352E8" : (destructive ? "#E11D48" : (active ? "#6352E8" : (functionKey ? "#4A416E" : "#3B355A"))))
            : (returnKey ? "#7B6DF0"
-              : (destructive ? "#EB4D5C"
-                 : (active ? "#8B5CF6"
-                    : (functionKey ? "#332D50" : "#292440"))))
+              : (active ? "#7B6DF0"
+                 : (functionKey ? "#342E4E" : "#25203A")))
 
-    border.color: returnKey ? "#9D90FF" : (active ? "#A78BFA" : (functionKey ? "#443C6B" : "#3D365F"))
-    border.width: active || returnKey ? 1.5 : 1
+    border.color: returnKey || active
+                  ? "#9487FF"
+                  : (functionKey ? "#453D66" : "#373053")
+    border.width: returnKey || active ? 1.5 : 1
 
-    Rectangle {
-        visible: !ipadKeyMouse.pressed
-        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-        height: 3; radius: 2
-        color: returnKey ? "#5243DB" : (destructive ? "#A11E2D" : (active ? "#6739D6" : (functionKey ? "#211D36" : "#1B172C")))
-        opacity: 0.8
-    }
-    Image {
-        visible: icon.toString().length > 0
+    Column {
         anchors.centerIn: parent
-        anchors.verticalCenterOffset: ipadKeyMouse.pressed ? 1 : -1
-        width: 32; height: 32
+        spacing: 1
+
+        Text {
+            visible: subLabel.length > 0 && icon.toString().length === 0
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: subLabel
+            color: returnKey || active ? "#DED8FF" : "#8E86A8"
+            font.family: "Noto Sans CJK SC"
+            font.pixelSize: 11
+            font.weight: Font.Normal
+        }
+
+        Text {
+            id: keyText
+            visible: icon.toString().length === 0 || keyImage.status !== Image.Ready
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: label.length > 0 ? label : (destructive ? "⌫" : "")
+            color: returnKey || active || destructive ? "#FFFFFF" : "#F4F1FA"
+            font.family: "Noto Sans CJK SC"
+            font.pixelSize: label.length > 4 ? 15 : (label.length > 2 ? 16 : 20)
+            font.weight: returnKey || functionKey || active ? Font.Bold : Font.DemiBold
+        }
+    }
+
+    Image {
+        id: keyImage
+        visible: icon.toString().length > 0 && status === Image.Ready
+        anchors.centerIn: parent
+        width: 26
+        height: 26
         source: icon
-        sourceSize.width: 64; sourceSize.height: 64
+        sourceSize.width: 52
+        sourceSize.height: 52
         smooth: true
     }
-    Text {
-        visible: icon.toString().length === 0
-        anchors.centerIn: parent
-        anchors.verticalCenterOffset: ipadKeyMouse.pressed ? 1 : -1
-        text: label
-        color: returnKey || active || destructive ? "#FFFFFF" : "#F4F1FA"
-        font.family: "Noto Sans CJK SC"
-        font.pixelSize: label.length > 4 ? 15 : (label.length > 2 ? 17 : 21)
-        font.weight: returnKey || functionKey || active ? Font.Bold : Font.Medium
+
+    MouseArea {
+        id: ipadKeyMouse
+        anchors.fill: parent
+        onClicked: ipadKey.tapped()
     }
-    MouseArea { id: ipadKeyMouse; anchors.fill: parent; onClicked: ipadKey.tapped() }
 }

@@ -8,9 +8,8 @@ import "apps"
 ApplicationWindow {
     id: window
     visible: true
-    visibility: Window.FullScreen
-    width: 800
-    height: 1280
+    width: uiRotation === 0 ? 1280 : 800
+    height: uiRotation === 0 ? 800 : 1280
     title: "Meow OS"
     color: "#000000"
 
@@ -74,6 +73,7 @@ ApplicationWindow {
     property var cachedReactionGame: null
     property var cachedFileManager: null
     property var cachedSettings: null
+    property var cachedPvZ: null
 
     function getAppObject(appId) {
         if (appId === "touch-test") {
@@ -88,6 +88,12 @@ ApplicationWindow {
                 if (cachedReactionGame) cachedReactionGame.StackView.destroyOnPop = false
             }
             return cachedReactionGame
+        } else if (appId === "pvz") {
+            if (!cachedPvZ || !cachedPvZ.parent) {
+                cachedPvZ = pvzComponent.createObject(stack)
+                if (cachedPvZ) cachedPvZ.StackView.destroyOnPop = false
+            }
+            return cachedPvZ
         } else if (appId === "files") {
             if (!cachedFileManager || !cachedFileManager.parent) {
                 cachedFileManager = fileManagerComponent.createObject(stack)
@@ -230,8 +236,9 @@ ApplicationWindow {
 
     ListModel {
         id: appRegistry
+        ListElement { appId: "pvz"; appTitle: "植物大战僵尸"; iconSource: "qrc:/assets/icons/sun.svg"; accent: "#10B981" }
+        ListElement { appId: "reaction-game"; appTitle: "喵喵反应"; iconSource: "qrc:/assets/icons/zap-white.svg"; accent: "#F59E0B" }
         ListElement { appId: "touch-test"; appTitle: "点击测试"; iconSource: "qrc:/assets/icons/mouse-pointer-click.svg"; accent: "#FF4D6D" }
-        ListElement { appId: "reaction-game"; appTitle: "喵喵反应"; iconSource: "qrc:/assets/icons/zap-white.svg"; accent: "#10B981" }
         ListElement { appId: "files"; appTitle: "文件"; iconSource: "qrc:/assets/icons/folder.svg"; accent: "#3B82F6" }
         ListElement { appId: "settings"; appTitle: "设置"; iconSource: "qrc:/assets/icons/settings.svg"; accent: "#8B5CF6" }
     }
@@ -269,6 +276,8 @@ ApplicationWindow {
             if (cachedTouchTest) cachedTouchTest.StackView.destroyOnPop = false
             if (!cachedReactionGame) cachedReactionGame = reactionGameComponent.createObject(stack, { visible: false })
             if (cachedReactionGame) cachedReactionGame.StackView.destroyOnPop = false
+            if (!cachedPvZ) cachedPvZ = pvzComponent.createObject(stack, { visible: false })
+            if (cachedPvZ) cachedPvZ.StackView.destroyOnPop = false
         }
     }
 
@@ -521,6 +530,15 @@ ApplicationWindow {
         }
     }
 
+    Component {
+        id: pvzComponent
+        PvZApp {
+            objectName: "pvz"
+            onExitRequested: stack.pop()
+            onBackRequested: stack.pop()
+        }
+    }
+
     Item {
         id: passwordDialog
         property string ssid: ""
@@ -570,30 +588,45 @@ ApplicationWindow {
         }
         Rectangle {
             id: dialogContent
-            width: 840; height: 160
+            width: 880; height: 168
             anchors.horizontalCenter: parent.horizontalCenter
-            y: passwordDialog.opened ? 64 : 44
-            radius: 24; color: "#FCFBFD"; border.color: "#DEDCE2"; border.width: 1
+            y: passwordDialog.opened ? 110 : 80
+            radius: 24; color: "#FFFFFF"; border.color: "#E2DFEC"; border.width: 1
             opacity: passwordDialog.opened ? 1 : 0
             scale: passwordDialog.opened ? 1.0 : 0.96
             Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
             Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
             Behavior on y { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+
             Column {
-                anchors.fill: parent; anchors.margins: 20; spacing: 12
+                anchors.fill: parent; anchors.margins: 20; spacing: 14
+
+                // Top Header Row
                 RowLayout {
-                    width: parent.width; height: 44
+                    width: parent.width; height: 40
                     spacing: 12
 
-                    // Title & Inline SSID aligned horizontally centered
+                    // Icon & Title & Inline SSID
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 8
+                        spacing: 10
+
+                        Rectangle {
+                            Layout.preferredWidth: 36; Layout.preferredHeight: 36; radius: 10
+                            color: "#EDE9FE"
+                            Image {
+                                anchors.centerIn: parent; width: 20; height: 20
+                                source: "qrc:/assets/icons/wifi-high.svg"
+                                sourceSize.width: 40; sourceSize.height: 40
+                            }
+                        }
+
                         Text {
-                            text: "输入 Wi-Fi 密码"
+                            text: "连接 Wi-Fi"
                             color: window.ink; font.family: window.uiFont; font.pixelSize: 20; font.weight: Font.Bold
                             Layout.alignment: Qt.AlignVCenter
                         }
+
                         Text {
                             visible: passwordDialog.ssid.length > 0
                             text: "·"
@@ -602,14 +635,18 @@ ApplicationWindow {
                             font.weight: Font.Bold
                             Layout.alignment: Qt.AlignVCenter
                         }
+
                         Rectangle {
                             visible: passwordDialog.ssid.length > 0
                             Layout.maximumWidth: 320
                             Layout.preferredHeight: 30
-                            Layout.preferredWidth: Math.min(320, ssidLabel.implicitWidth + 20)
+                            Layout.preferredWidth: Math.min(320, ssidLabel.implicitWidth + 22)
                             Layout.alignment: Qt.AlignVCenter
-                            radius: 8
-                            color: "#F0EEF8"
+                            radius: 9
+                            color: "#F2EFFB"
+                            border.color: "#E3DEF5"
+                            border.width: 1
+
                             Text {
                                 id: ssidLabel
                                 anchors.centerIn: parent
@@ -624,7 +661,7 @@ ApplicationWindow {
                         }
                     }
 
-                    // Security Tip Badge (Green for Secure, Amber/Yellow for Insecure)
+                    // Security Tip Badge
                     Rectangle {
                         id: securityBadge
                         readonly property bool isSecure: passwordDialog.securityType.toLowerCase().indexOf("open") < 0
@@ -634,8 +671,8 @@ ApplicationWindow {
                         Layout.preferredWidth: securityTipText.implicitWidth + 22
                         Layout.alignment: Qt.AlignVCenter
                         radius: 9
-                        color: isSecure ? "#EAF8F1" : "#FFFBEB"
-                        border.color: isSecure ? "#BCE8D1" : "#FDE68A"
+                        color: isSecure ? "#ECFDF5" : "#FFFBEB"
+                        border.color: isSecure ? "#A7F3D0" : "#FDE68A"
                         border.width: 1
 
                         Row {
@@ -644,12 +681,12 @@ ApplicationWindow {
                             Rectangle {
                                 width: 7; height: 7; radius: 3.5
                                 anchors.verticalCenter: parent.verticalCenter
-                                color: securityBadge.isSecure ? "#22C55E" : "#F59E0B"
+                                color: securityBadge.isSecure ? "#10B981" : "#F59E0B"
                             }
                             Text {
                                 id: securityTipText
-                                text: securityBadge.isSecure ? "安全网络" : "开放网络"
-                                color: securityBadge.isSecure ? "#16803C" : "#B45309"
+                                text: securityBadge.isSecure ? "安全加密网络" : "开放未加密"
+                                color: securityBadge.isSecure ? "#059669" : "#B45309"
                                 font.family: window.uiFont
                                 font.pixelSize: 13
                                 font.weight: Font.DemiBold
@@ -659,35 +696,44 @@ ApplicationWindow {
 
                     // Close Dialog Button
                     Rectangle {
-                        width: 34; height: 34; radius: 17; color: closeDialogMouse.pressed ? "#E2DFE7" : "#F0EDF3"
+                        width: 32; height: 32; radius: 16
+                        color: closeDialogMouse.pressed ? "#E2DFE7" : "#F1EEF5"
                         Layout.alignment: Qt.AlignVCenter
-                        Text { anchors.centerIn: parent; text: "✕"; color: window.secondary; font.pixelSize: 14; font.weight: Font.Bold }
+                        Text { anchors.centerIn: parent; text: "✕"; color: window.secondary; font.pixelSize: 13; font.weight: Font.Bold }
                         MouseArea { id: closeDialogMouse; anchors.fill: parent; onClicked: passwordDialog.close() }
                     }
                 }
+
+                // Password Input Field Box
                 Item {
-                    width: parent.width; height: 56
+                    width: parent.width; height: 54
                     TextField {
                         id: wifiPassword
                         anchors.fill: parent
-                        placeholderText: "输入密码…"
+                        placeholderText: "请输入无线网络密码…"
                         echoMode: passwordDialog.showPassword ? TextInput.Normal : TextInput.Password
-                        font.family: window.uiFont; font.pixelSize: 20
-                        leftPadding: 17; rightPadding: 98
+                        font.family: window.uiFont; font.pixelSize: 19
+                        leftPadding: 18; rightPadding: 104
                         background: Rectangle {
-                            radius: 14; color: "white"
-                            border.color: wifiPassword.activeFocus ? window.purple : "#D8D5DD"; border.width: 2
+                            radius: 14; color: "#F8F7FC"
+                            border.color: wifiPassword.activeFocus ? "#7B6DF0" : "#DCD8E6"
+                            border.width: wifiPassword.activeFocus ? 2 : 1
                         }
                         Keys.onReturnPressed: passwordDialog.submit()
                     }
+
+                    // Show / Hide Password Action Button
                     Rectangle {
                         anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
-                        width: 76; height: 40; radius: 10
+                        width: 82; height: 38; radius: 10
                         color: showPasswordMouse.pressed ? "#E1DDF8" : "#EEEAFE"
-                        Text {
-                            anchors.centerIn: parent
-                            text: passwordDialog.showPassword ? "隐藏" : "显示"
-                            color: "#6555D5"; font.family: window.uiFont; font.pixelSize: 15; font.weight: Font.DemiBold
+                        border.color: "#DDD7F8"; border.width: 1
+                        Row {
+                            anchors.centerIn: parent; spacing: 4
+                            Text {
+                                text: passwordDialog.showPassword ? "隐藏" : "显示"
+                                color: "#6555D5"; font.family: window.uiFont; font.pixelSize: 14; font.weight: Font.DemiBold
+                            }
                         }
                         MouseArea { id: showPasswordMouse; anchors.fill: parent; onClicked: passwordDialog.showPassword = !passwordDialog.showPassword }
                     }
@@ -695,19 +741,20 @@ ApplicationWindow {
             }
         }
 
+        // Modern Pure Flat Virtual Keyboard Shell
         Rectangle {
             id: keyboardShell
             anchors.left: parent.left
             anchors.right: parent.right
-            height: 334
+            height: 260
             y: passwordDialog.opened ? parent.height - height : parent.height
-            color: "#1C182E"
-            border.color: "#352F52"; border.width: 1
+            color: "#161324"
+            border.color: "#2C2646"; border.width: 1
             opacity: passwordDialog.opened ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
             Behavior on y { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
 
-            // Absorb clicks on keyboard shell and empty margins so typing doesn't accidentally dismiss
+            // Absorb clicks on keyboard shell
             MouseArea {
                 anchors.fill: parent
                 z: 0
@@ -717,71 +764,12 @@ ApplicationWindow {
             Column {
                 id: keyboardContent
                 z: 1
-                anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 18; rightMargin: 18; topMargin: 8 }
+                anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 18; rightMargin: 18; topMargin: 14 }
                 spacing: 8
 
-                Item {
-                    width: parent.width; height: 36
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: mouse.accepted = true
-                    }
-                    RowLayout {
-                        anchors { left: parent.left; leftMargin: 6; verticalCenter: parent.verticalCenter }
-                        spacing: 8
-                        Text {
-                            text: "🐾 Meow Keyboard"
-                            color: "#9C94BA"
-                            font.family: window.uiFont; font.pixelSize: 13; font.weight: Font.DemiBold
-                        }
-                        Rectangle {
-                            width: 32; height: 18; radius: 5
-                            color: "#352E52"
-                            Text {
-                                anchors.centerIn: parent
-                                text: passwordDialog.keyboardPage === 0 ? "EN" : (passwordDialog.keyboardPage === 1 ? "123" : "#+=")
-                                color: "#D2CAEE"
-                                font.family: window.uiFont; font.pixelSize: 11; font.weight: Font.Bold
-                            }
-                        }
-                    }
-                    Rectangle {
-                        anchors.centerIn: parent
-                        width: 44; height: 4; radius: 2
-                        color: "#4A426B"
-                    }
-                    RowLayout {
-                        anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
-                        spacing: 10
-                        Rectangle {
-                            visible: wifiPassword.text.length > 0
-                            width: 58; height: 26; radius: 8
-                            color: clearMouse.pressed ? "#483F6B" : "#2F284A"
-                            Text {
-                                anchors.centerIn: parent
-                                text: "清空"
-                                color: "#D2CAEE"
-                                font.family: window.uiFont; font.pixelSize: 12; font.weight: Font.Medium
-                            }
-                            MouseArea { id: clearMouse; anchors.fill: parent; onClicked: wifiPassword.text = "" }
-                        }
-                        Rectangle {
-                            id: dismissBtn
-                            width: 74; height: 26; radius: 8
-                            color: dismissMouse.pressed ? "#4F4478" : "#383058"
-                            border.color: "#53487D"; border.width: 1
-                            RowLayout {
-                                anchors.centerIn: parent; spacing: 4
-                                Text { text: "收起"; color: "#FAF8FF"; font.family: window.uiFont; font.pixelSize: 12; font.weight: Font.DemiBold }
-                                Text { text: "⌄"; color: "#FAF8FF"; font.pixelSize: 13; font.weight: Font.Bold }
-                            }
-                            MouseArea { id: dismissMouse; anchors.fill: parent; onClicked: passwordDialog.close() }
-                        }
-                    }
-                }
-
+                // Row 1: 10 Keys (Total: 1232px)
                 Row {
-                    anchors.horizontalCenter: parent.horizontalCenter; spacing: 9
+                    anchors.horizontalCenter: parent.horizontalCenter; spacing: 8
                     Repeater {
                         model: passwordDialog.keyboardPage === 0
                                ? ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"]
@@ -792,13 +780,16 @@ ApplicationWindow {
                             label: passwordDialog.keyboardPage === 0
                                    ? (passwordDialog.shift ? modelData : modelData.toLowerCase())
                                    : modelData
-                            keyWidth: 108
+                            keyWidth: 116
+                            keyHeight: 52
                             onTapped: passwordDialog.typeKey(label)
                         }
                     }
                 }
+
+                // Row 2: 9 Keys (Total: 1108px, centered)
                 Row {
-                    anchors.horizontalCenter: parent.horizontalCenter; spacing: 9
+                    anchors.horizontalCenter: parent.horizontalCenter; spacing: 8
                     Repeater {
                         model: passwordDialog.keyboardPage === 0
                                ? ["A", "S", "D", "F", "G", "H", "J", "K", "L"]
@@ -809,17 +800,20 @@ ApplicationWindow {
                             label: passwordDialog.keyboardPage === 0
                                    ? (passwordDialog.shift ? modelData : modelData.toLowerCase())
                                    : modelData
-                            keyWidth: 108
+                            keyWidth: 116
+                            keyHeight: 52
                             onTapped: passwordDialog.typeKey(label)
                         }
                     }
                 }
+
+                // Row 3: Shift(178) + 7 Keys(116) + Backspace(178) (Total: 1232px)
                 Row {
-                    anchors.horizontalCenter: parent.horizontalCenter; spacing: 9
+                    anchors.horizontalCenter: parent.horizontalCenter; spacing: 8
                     IpadKey {
                         label: passwordDialog.keyboardPage === 0 ? "⇧"
                                                                   : (passwordDialog.keyboardPage === 1 ? "#+=" : "123")
-                        keyWidth: 142; functionKey: true; active: passwordDialog.shift
+                        keyWidth: 178; keyHeight: 52; functionKey: true; active: passwordDialog.shift
                         onTapped: {
                             if (passwordDialog.keyboardPage === 0) passwordDialog.shift = !passwordDialog.shift
                             else passwordDialog.keyboardPage = passwordDialog.keyboardPage === 1 ? 2 : 1
@@ -835,27 +829,44 @@ ApplicationWindow {
                             label: passwordDialog.keyboardPage === 0
                                    ? (passwordDialog.shift ? modelData : modelData.toLowerCase())
                                    : (modelData === "'" ? "’" : modelData)
-                            keyWidth: 108
+                            keyWidth: 116
+                            keyHeight: 52
                             onTapped: passwordDialog.typeKey(passwordDialog.keyboardPage === 2 && modelData === "'" ? "'" : label)
                         }
                     }
-                    IpadKey { icon: "qrc:/assets/icons/delete-cute.svg"; keyWidth: 142; functionKey: true; destructive: true; onTapped: passwordDialog.backspace() }
+                    IpadKey {
+                        icon: "qrc:/assets/icons/delete-cute.svg"
+                        keyWidth: 178
+                        keyHeight: 52
+                        functionKey: true
+                        destructive: true
+                        onTapped: passwordDialog.backspace()
+                    }
                 }
+
+                // Row 4: Mode(160) + Comma(90) + Space(526) + Dot(90) + Cancel(140) + Connect(186) (Total: 1232px)
                 Row {
-                    anchors.horizontalCenter: parent.horizontalCenter; spacing: 9
+                    anchors.horizontalCenter: parent.horizontalCenter; spacing: 8
                     IpadKey {
                         label: passwordDialog.keyboardPage === 0 ? "123" : "ABC"
-                        keyWidth: 142; functionKey: true
+                        keyWidth: 160
+                        keyHeight: 52
+                        functionKey: true
                         onTapped: {
                             passwordDialog.keyboardPage = passwordDialog.keyboardPage === 0 ? 1 : 0
                             passwordDialog.shift = false
                         }
                     }
-                    IpadKey { label: ","; keyWidth: 90; onTapped: passwordDialog.typeKey(",") }
-                    IpadKey { label: "English (US)"; keyWidth: 502; onTapped: passwordDialog.typeKey(" ") }
-                    IpadKey { label: "."; keyWidth: 90; onTapped: passwordDialog.typeKey(".") }
-                    IpadKey { label: "取消"; keyWidth: 130; functionKey: true; onTapped: passwordDialog.close() }
-                    IpadKey { label: "连接"; keyWidth: 180; returnKey: true; onTapped: passwordDialog.submit() }
+                    IpadKey { label: ","; keyWidth: 90; keyHeight: 52; onTapped: passwordDialog.typeKey(",") }
+                    IpadKey {
+                        label: "空格  Space"
+                        keyWidth: 526
+                        keyHeight: 52
+                        onTapped: passwordDialog.typeKey(" ")
+                    }
+                    IpadKey { label: "."; keyWidth: 90; keyHeight: 52; onTapped: passwordDialog.typeKey(".") }
+                    IpadKey { label: "取消"; keyWidth: 140; keyHeight: 52; functionKey: true; onTapped: passwordDialog.close() }
+                    IpadKey { label: "连接"; keyWidth: 186; keyHeight: 52; returnKey: true; onTapped: passwordDialog.submit() }
                 }
             }
         }

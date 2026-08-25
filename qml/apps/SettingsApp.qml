@@ -16,18 +16,16 @@ Rectangle {
                                         : section === "ethernet" ? 1
                                         : section === "battery" ? 2
                                         : section === "sound" ? 3
-                                        : section === "ch592" ? 4
-                                        : section === "display" ? 5
-                                        : section === "performance" ? 6
-                                        : section === "storage" ? 7 : 8
+                                        : section === "display" ? 4
+                                        : section === "performance" ? 5
+                                        : section === "storage" ? 6 : 7
     readonly property var pageLoaders: [wifiPageLoader, ethernetPageLoader,
                                         batteryPageLoader, soundPageLoader,
-                                        ch592PageLoader, displayPageLoader,
-                                        performancePageLoader, storagePageLoader,
-                                        aboutPageLoader]
+                                        displayPageLoader, performancePageLoader,
+                                        storagePageLoader, aboutPageLoader]
     property int prewarmIndex: 0
     property int qaSwitchIndex: 0
-    readonly property var qaSections: ["wifi", "ethernet", "battery", "sound", "ch592", "display", "performance", "storage", "about"]
+    readonly property var qaSections: ["wifi", "ethernet", "battery", "sound", "display", "performance", "storage", "about"]
     property double sectionSwitchStartedAt: 0
     property int lastSectionSwitchMs: -1
 
@@ -120,11 +118,10 @@ Rectangle {
             SettingsNavRow { title: "有线网络"; icon: "qrc:/assets/icons/ethernet-port.svg"; accent: "#3B82F6"; selected: settingsPage.section === "ethernet"; onClicked: settingsPage.openSection("ethernet", 1) }
             SettingsNavRow { title: "电池"; icon: "qrc:/assets/icons/battery-charging.svg"; accent: "#F59E0B"; selected: settingsPage.section === "battery"; onClicked: settingsPage.openSection("battery", 2) }
             SettingsNavRow { title: "声音"; icon: "qrc:/assets/icons/volume-2.svg"; accent: "#EC4899"; selected: settingsPage.section === "sound"; onClicked: settingsPage.openSection("sound", 3) }
-            SettingsNavRow { title: "隔空喵传"; icon: "qrc:/assets/icons/zap-dark.svg"; accent: "#8B5CF6"; selected: settingsPage.section === "ch592"; onClicked: settingsPage.openSection("ch592", 4) }
-            SettingsNavRow { title: "显示与触摸"; icon: "qrc:/assets/icons/monitor.svg"; accent: "#6366F1"; selected: settingsPage.section === "display"; onClicked: settingsPage.openSection("display", 5) }
-            SettingsNavRow { title: "性能"; icon: "qrc:/assets/icons/cpu.svg"; accent: "#06B6D4"; selected: settingsPage.section === "performance"; onClicked: settingsPage.openSection("performance", 6) }
-            SettingsNavRow { title: "存储空间"; icon: "qrc:/assets/icons/hard-drive.svg"; accent: "#2563EB"; selected: settingsPage.section === "storage"; onClicked: settingsPage.openSection("storage", 7) }
-            SettingsNavRow { title: "关于本机"; icon: "qrc:/assets/icons/info.svg"; accent: "#64748B"; selected: settingsPage.section === "about"; onClicked: settingsPage.openSection("about", 8) }
+            SettingsNavRow { title: "显示与触摸"; icon: "qrc:/assets/icons/monitor.svg"; accent: "#6366F1"; selected: settingsPage.section === "display"; onClicked: settingsPage.openSection("display", 4) }
+            SettingsNavRow { title: "性能"; icon: "qrc:/assets/icons/cpu.svg"; accent: "#06B6D4"; selected: settingsPage.section === "performance"; onClicked: settingsPage.openSection("performance", 5) }
+            SettingsNavRow { title: "存储空间"; icon: "qrc:/assets/icons/hard-drive.svg"; accent: "#2563EB"; selected: settingsPage.section === "storage"; onClicked: settingsPage.openSection("storage", 6) }
+            SettingsNavRow { title: "关于本机"; icon: "qrc:/assets/icons/info.svg"; accent: "#64748B"; selected: settingsPage.section === "about"; onClicked: settingsPage.openSection("about", 7) }
         }
     }
 
@@ -138,7 +135,6 @@ Rectangle {
             Loader { id: ethernetPageLoader; active: false; asynchronous: true; sourceComponent: ethernetSettings }
             Loader { id: batteryPageLoader; active: false; asynchronous: true; sourceComponent: batterySettings }
             Loader { id: soundPageLoader; active: false; asynchronous: true; sourceComponent: soundSettings }
-            Loader { id: ch592PageLoader; active: false; asynchronous: true; sourceComponent: ch592Settings }
             Loader { id: displayPageLoader; active: false; asynchronous: true; sourceComponent: displaySettings }
             Loader { id: performancePageLoader; active: false; asynchronous: true; sourceComponent: performanceSettings }
             Loader { id: storagePageLoader; active: false; asynchronous: true; sourceComponent: storageSettings }
@@ -727,34 +723,9 @@ Rectangle {
                     IosInfoRow { height: 54; label: "电流"; value: systemBackend.batteryAvailable ? systemBackend.batteryCurrentMa + " mA" : "--" }
                     IosInfoRow { height: 54; label: "电池温度"; value: systemBackend.batteryTemperatureC > -100 ? systemBackend.batteryTemperatureC.toFixed(1) + " °C" : "--" }
                     IosInfoRow { height: 54; label: "外部电源"; value: systemBackend.chargerAvailable ? (systemBackend.externalPowerPresent ? "已接入" : "未接入") : "--" }
-                    IosInfoRow { height: 54; label: "温度保护"; value: window.temperatureZoneText(systemBackend.chargeTemperatureZone); last: true }
-                }
-                IosGroup {
-                    width: parent.width
-                    IosInfoRow { label: "电量计通信"; value: systemBackend.gaugeCommunication ? "正常" : (systemBackend.gaugeError.length ? systemBackend.gaugeError : "未检测到"); valueColor: systemBackend.gaugeCommunication ? "#49B990" : "#D94052" }
-                    IosInfoRow { label: "剩余容量"; value: systemBackend.batteryRemainingMah >= 0 ? systemBackend.batteryRemainingMah + " mAh" : "未导出" }
-                    IosInfoRow { label: "满充容量"; value: systemBackend.batteryFullChargeMah >= 0 ? systemBackend.batteryFullChargeMah + " mAh" : "未导出" }
-                    IosInfoRow { label: "设计容量"; value: systemBackend.batteryDesignCapacityMah + " mAh" }
-                    IosInfoRow { label: "原始电压"; value: systemBackend.batteryRawVoltageMv >= 0 ? systemBackend.batteryRawVoltageMv + " mV" : "--" }
-                    IosInfoRow { label: "原始电流"; value: systemBackend.batteryRawCurrentMa + " mA"; last: true }
-                }
-                IosGroup {
-                    width: parent.width
-                    IosInfoRow { label: "校准状态"; value: systemBackend.batteryCalibrationStatus; valueColor: systemBackend.batteryCalibrationStatus.indexOf("失败") >= 0 ? "#D94052" : "#49B990"; last: systemBackend.batteryCalibrationSummary.length === 0 }
-                    Text { visible: systemBackend.batteryCalibrationSummary.length > 0; width: parent.width; leftPadding: 18; rightPadding: 18; bottomPadding: 12; text: systemBackend.batteryCalibrationSummary; color: "#77717D"; font.family: "Noto Sans CJK SC"; font.pixelSize: 13; wrapMode: Text.WordWrap }
-                    RowLayout {
-                        width: parent.width; height: 52; spacing: 8
-                        TextField { id: calibrationVoltage; Layout.fillWidth: true; placeholderText: "参考电压 mV"; text: systemBackend.batteryVoltageMv >= 0 ? String(systemBackend.batteryVoltageMv) : ""; inputMethodHints: Qt.ImhDigitsOnly }
-                        TextField { id: calibrationCurrent; Layout.fillWidth: true; placeholderText: "参考电流 mA"; text: String(systemBackend.batteryCurrentMa); inputMethodHints: Qt.ImhFormattedNumbersOnly }
-                        TextField { id: calibrationCapacity; Layout.fillWidth: true; placeholderText: "容量 mAh"; text: "10000"; inputMethodHints: Qt.ImhDigitsOnly }
-                    }
-                    RowLayout {
-                        width: parent.width; height: 46; spacing: 10
-                        CheckBox { id: calibrationStable; text: "已静置稳定"; Layout.fillWidth: true }
-                        Button { text: "记录校准参考"; enabled: systemBackend.gaugeCommunication; onClicked: systemBackend.calibrateBattery(Number(calibrationVoltage.text), Number(calibrationCurrent.text), Number(calibrationCapacity.text), calibrationStable.checked) }
-                        Button { text: "清除记录"; onClicked: systemBackend.clearBatteryCalibration() }
-                    }
-                    Text { width: parent.width; leftPadding: 18; rightPadding: 18; bottomPadding: 14; text: "本操作只保存参考值和偏差，不写入BQ27220未知数据区。确认外部万用表和电流参考稳定后再记录。"; color: "#77717D"; font.family: "Noto Sans CJK SC"; font.pixelSize: 13; wrapMode: Text.WordWrap }
+                    IosInfoRow { height: 54; label: "剩余容量"; value: systemBackend.batteryRemainingMah >= 0 ? systemBackend.batteryRemainingMah + " mAh" : "--" }
+                    IosInfoRow { height: 54; label: "满充容量"; value: systemBackend.batteryFullChargeMah >= 0 ? systemBackend.batteryFullChargeMah + " mAh" : "--" }
+                    IosInfoRow { height: 54; label: "温度状态"; value: window.temperatureZoneText(systemBackend.chargeTemperatureZone); last: true }
                 }
             }
         }
@@ -777,50 +748,39 @@ Rectangle {
                     ColumnLayout {
                         Layout.fillWidth: true; spacing: 2
                         Text { text: "声音"; color: "#27222D"; font.family: "Noto Sans CJK SC"; font.pixelSize: 34; font.weight: Font.Bold }
-                        Text { text: systemBackend.audioAvailable ? "内置扬声器已就绪" : "音频输出尚未就绪"; color: "#77717D"; font.family: "Noto Sans CJK SC"; font.pixelSize: 18 }
+                        Text { text: systemBackend.audioAvailable ? "内置扬声器与音量调节" : "音频输出尚未就绪"; color: "#77717D"; font.family: "Noto Sans CJK SC"; font.pixelSize: 18 }
                     }
                 }
 
+                // Unified Sound & Volume Card
                 Rectangle {
-                    width: parent.width; height: 96; radius: 20
-                    color: "#FFF1F6"; border.color: "#FFD0DF"; border.width: 1
-                    RowLayout {
-                        anchors.fill: parent; anchors.margins: 18; spacing: 16
-                        Rectangle {
-                            Layout.preferredWidth: 58; Layout.preferredHeight: 58; radius: 17
-                            color: "#FF7FA7"
-                            Image { anchors.centerIn: parent; width: 32; height: 32; source: "qrc:/assets/icons/volume-2.svg"; sourceSize.width: 64; sourceSize.height: 64 }
-                        }
-                        ColumnLayout {
-                            Layout.fillWidth: true; spacing: 3
-                            Text { text: "内置扬声器"; color: "#27222D"; font.family: "Noto Sans CJK SC"; font.pixelSize: 21; font.weight: Font.DemiBold }
-                            Text { text: systemBackend.audioAvailable ? "NS4168 · 单声道输出" : "声卡驱动未就绪"; color: "#B35A78"; font.family: "Noto Sans CJK SC"; font.pixelSize: 15 }
-                        }
-                        Text {
-                            text: systemBackend.volumePercent >= 0 ? systemBackend.volumePercent + "%" : "--"
-                            color: "#FF7FA7"; font.family: "Noto Sans CJK SC"; font.pixelSize: 26; font.weight: Font.Bold
-                        }
-                    }
-                }
-                IosGroup {
-                    width: parent.width
-                    IosInfoRow { label: "输出设备"; value: systemBackend.audioAvailable ? "内置扬声器" : "--" }
-                    IosInfoRow { label: "主音量"; value: systemBackend.volumePercent >= 0 ? systemBackend.volumePercent + "%" : "--"; valueColor: "#FF7FA7"; emphasize: true; last: true }
-                }
-                Rectangle {
-                    width: parent.width; height: 132; radius: 18
+                    width: parent.width; height: 168; radius: 22
                     color: "#FFF7FA"; border.color: "#F3D5E1"; border.width: 1
+
                     Column {
-                        width: parent.width - 36; x: 18; y: 18
-                        spacing: 14
+                        anchors.fill: parent; anchors.margins: 20; spacing: 16
+
                         RowLayout {
-                            width: parent.width
-                            Text { text: "音量"; color: "#27222D"; font.family: "Noto Sans CJK SC"; font.pixelSize: 19; font.weight: Font.DemiBold; Layout.fillWidth: true }
-                            Text { text: systemBackend.volumePercent >= 0 ? systemBackend.volumePercent + "%" : "--"; color: "#FF7FA7"; font.family: "Noto Sans CJK SC"; font.pixelSize: 18; font.weight: Font.DemiBold }
+                            width: parent.width; spacing: 16
+                            Rectangle {
+                                Layout.preferredWidth: 48; Layout.preferredHeight: 48; radius: 15
+                                color: "#FF7FA7"
+                                Image { anchors.centerIn: parent; width: 26; height: 26; source: "qrc:/assets/icons/volume-2.svg"; sourceSize.width: 52; sourceSize.height: 52 }
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true; spacing: 2
+                                Text { text: "输出设备 · 内置扬声器"; color: "#27222D"; font.family: "Noto Sans CJK SC"; font.pixelSize: 18; font.weight: Font.DemiBold }
+                                Text { text: systemBackend.audioAvailable ? "音频输出正常" : "未检测到音频设备"; color: "#B35A78"; font.family: "Noto Sans CJK SC"; font.pixelSize: 14 }
+                            }
+                            Text {
+                                text: systemBackend.volumePercent >= 0 ? systemBackend.volumePercent + "%" : "--"
+                                color: "#FF7FA7"; font.family: "Noto Sans CJK SC"; font.pixelSize: 26; font.weight: Font.Bold
+                            }
                         }
+
                         RowLayout {
-                            width: parent.width; spacing: 15
-                            Image { Layout.preferredWidth: 25; Layout.preferredHeight: 25; source: "qrc:/assets/icons/volume-2.svg"; sourceSize.width: 50; sourceSize.height: 50; opacity: volumeSlider.enabled ? 1 : 0.3 }
+                            width: parent.width; spacing: 14
+                            Image { Layout.preferredWidth: 24; Layout.preferredHeight: 24; source: "qrc:/assets/icons/volume-2.svg"; sourceSize.width: 48; sourceSize.height: 48; opacity: volumeSlider.enabled ? 1 : 0.3 }
                             Slider {
                                 id: volumeSlider
                                 Layout.fillWidth: true; Layout.preferredHeight: 34
@@ -848,58 +808,6 @@ Rectangle {
                             }
                         }
                     }
-                }
-            }
-        }
-    }
-
-    Component {
-        id: ch592Settings
-        SettingsFlickable {
-            anchors.fill: parent
-            contentHeight: ch592Col.height + 60
-
-            Column {
-                id: ch592Col
-                width: parent.width - 60
-                x: 30; y: 30
-                spacing: 16
-
-                RowLayout {
-                    width: parent.width
-                    ColumnLayout {
-                        Layout.fillWidth: true; spacing: 2
-                        Text { text: "隔空喵传"; color: "#27222D"; font.family: "Noto Sans CJK SC"; font.pixelSize: 34; font.weight: Font.Bold }
-                        Text { text: "USB IAP 服务待接入"; color: "#77717D"; font.family: "Noto Sans CJK SC"; font.pixelSize: 18 }
-                    }
-                }
-
-                Rectangle {
-                    width: parent.width; height: 108; radius: 20
-                    color: "#EAF8F2"; border.color: "#BFE8D4"; border.width: 1
-                    RowLayout {
-                        anchors.fill: parent; anchors.margins: 18; spacing: 16
-                        Rectangle {
-                            Layout.preferredWidth: 58; Layout.preferredHeight: 58; radius: 17
-                            color: "#49B990"
-                            Image { anchors.centerIn: parent; width: 32; height: 32; source: "qrc:/assets/icons/cpu.svg"; sourceSize.width: 64; sourceSize.height: 64 }
-                        }
-                        ColumnLayout {
-                            Layout.fillWidth: true; spacing: 4
-                            Text { text: "CH592F"; color: "#27222D"; font.family: "Noto Sans CJK SC"; font.pixelSize: 22; font.weight: Font.DemiBold }
-                            Text { text: "常驻 USB IAP · 正常升级无需按 BOOT"; color: "#3E8F6E"; font.family: "Noto Sans CJK SC"; font.pixelSize: 15 }
-                        }
-                        Rectangle {
-                            Layout.preferredWidth: 88; Layout.preferredHeight: 36; radius: 13
-                            color: "#D8F3E6"
-                            Text { anchors.centerIn: parent; text: "待接入"; color: "#2F8A62"; font.family: "Noto Sans CJK SC"; font.pixelSize: 15; font.weight: Font.DemiBold }
-                        }
-                    }
-                }
-                IosGroup {
-                    width: parent.width
-                    IosInfoRow { label: "正常更新"; value: "无需按 BOOT"; valueColor: "#49B990"; emphasize: true }
-                    IosInfoRow { label: "首次烧录 / 救砖"; value: "物理 BOOT 或 SWD"; last: true }
                 }
             }
         }
@@ -1160,8 +1068,9 @@ Rectangle {
                                 width: parent.width; spacing: 8
                                 Repeater {
                                     model: [
+                                        { appId: "pvz", title: "植物大战僵尸", icon: "qrc:/assets/icons/sun.svg", desc: "战斗过程中保持屏幕常亮", accent: "#10B981" },
                                         { appId: "touch-test", title: "点击测试", icon: "qrc:/assets/icons/mouse-pointer-click.svg", desc: "触摸多点测试中保持屏幕常亮", accent: "#FF4D6D" },
-                                        { appId: "reaction-game", title: "喵喵反应", icon: "qrc:/assets/icons/zap-white.svg", desc: "极速反应挑战中保持屏幕常亮", accent: "#10B981" },
+                                        { appId: "reaction-game", title: "喵喵反应", icon: "qrc:/assets/icons/zap-white.svg", desc: "极速反应挑战中保持屏幕常亮", accent: "#F59E0B" },
                                         { appId: "files", title: "文件管理", icon: "qrc:/assets/icons/folder.svg", desc: "长文档阅读与文件传输时保持常亮", accent: "#3B82F6" },
                                         { appId: "settings", title: "系统设置", icon: "qrc:/assets/icons/settings.svg", desc: "系统调优与监控中保持常亮", accent: "#8B5CF6" }
                                     ]
@@ -1195,17 +1104,6 @@ Rectangle {
                                 }
                             }
                         }
-                    }
-
-                    // 7. System Info Group
-                    IosGroup {
-                        width: parent.width
-                        IosInfoRow {
-                            label: "当前休眠功耗模式"
-                            value: systemBackend.sleepPowerLevel === 1 ? "深度低功耗 (CPU 408MHz · 熄灭背光)" : "标准息屏 (熄灭背光)"
-                            valueColor: "#7B6DF0"; emphasize: true
-                        }
-                        IosInfoRow { label: "唤醒方式"; value: "点击屏幕任意位置"; last: true }
                     }
                 }
             }
@@ -1398,20 +1296,16 @@ Rectangle {
                         ColumnLayout {
                             Layout.fillWidth: true; spacing: 4
                             Text { text: "Meow OS"; color: "#27222D"; font.family: "Noto Sans CJK SC"; font.pixelSize: 28; font.weight: Font.Bold }
-                            Text { text: systemBackend.boardProfile; color: "#B35A78"; font.family: "Noto Sans CJK SC"; font.pixelSize: 16; elide: Text.ElideRight; Layout.fillWidth: true }
+                            Text { text: "版本 " + systemBackend.version + " · 精巧触控操作系统"; color: "#B35A78"; font.family: "Noto Sans CJK SC"; font.pixelSize: 15; elide: Text.ElideRight; Layout.fillWidth: true }
                         }
                     }
                 }
                 IosGroup {
                     width: parent.width
                     IosInfoRow { label: "系统版本"; value: "Meow OS " + systemBackend.version; valueColor: "#FF7FA7"; emphasize: true }
-                    IosInfoRow { label: "主机名"; value: systemBackend.hostname.length ? systemBackend.hostname : "--" }
+                    IosInfoRow { label: "硬件平台"; value: systemBackend.boardProfile }
+                    IosInfoRow { label: "设备名称"; value: systemBackend.hostname.length ? systemBackend.hostname : "--" }
                     IosInfoRow { label: "Linux 内核"; value: systemBackend.kernel.length ? systemBackend.kernel : "--"; last: true }
-                }
-                IosGroup {
-                    width: parent.width
-                    IosInfoRow { label: "显示输出"; value: systemBackend.hardwareCapabilities.display ? "可用" : "未检测到" }
-                    IosInfoRow { label: "触摸输入"; value: systemBackend.hardwareCapabilities.touch ? "可用" : "未检测到"; last: true }
                 }
             }
         }

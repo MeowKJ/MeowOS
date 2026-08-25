@@ -229,6 +229,8 @@ public:
     Q_INVOKABLE void removeFavoriteLocation(const QString &path);
     Q_INVOKABLE void transferFile(const QString &sourcePath, const QString &destinationDirectory,
                                   bool move);
+    Q_INVOKABLE void saveAppData(const QString &key, const QString &data);
+    Q_INVOKABLE QString loadAppData(const QString &key, const QString &defaultValue = QString()) const;
 
 signals:
     void systemInfoChanged();

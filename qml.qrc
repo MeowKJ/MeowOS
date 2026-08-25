@@ -29,6 +29,7 @@
         <file>qml/apps/ReactionGameApp.qml</file>
         <file>qml/apps/FileManagerApp.qml</file>
         <file>qml/apps/SettingsApp.qml</file>
+        <file>qml/apps/PvZApp.qml</file>
         <file>assets/wallpaper.jpg</file>
         <file>assets/meowkj-avatar.png</file>
         <file>assets/meowkj-avatar-circle.png</file>
