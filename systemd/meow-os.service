@@ -20,7 +20,7 @@ ExecStart=/opt/meow-os/bin/meow-display-launcher
 ExecStopPost=+/usr/bin/python3 /opt/meow-os/vt_mode.py text
 Restart=always
 RestartSec=2
-NoNewPrivileges=true
+NoNewPrivileges=false
 
 [Install]
 WantedBy=multi-user.target

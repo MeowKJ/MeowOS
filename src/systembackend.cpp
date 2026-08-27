@@ -1625,11 +1625,13 @@ void SystemBackend::playVolumeFeedback()
 
 void SystemBackend::launchMindustry()
 {
-    const bool started = QProcess::startDetached(QStringLiteral("sudo"),
-                                                  {QStringLiteral("-n"), QStringLiteral("systemctl"),
-                                                   QStringLiteral("start"), QStringLiteral("meow-mindustry.service")});
-    emit operationMessage(started ? QStringLiteral("像素工厂已启动")
-                                  : QStringLiteral("像素工厂启动失败，请检查游戏文件"), started);
+    const int exitCode = QProcess::execute(QStringLiteral("sudo"),
+                                           {QStringLiteral("-n"), QStringLiteral("/bin/systemctl"),
+                                            QStringLiteral("--no-block"), QStringLiteral("start"),
+                                            QStringLiteral("meow-mindustry.service")});
+    const bool requested = exitCode == 0;
+    emit operationMessage(requested ? QStringLiteral("像素工厂正在启动…")
+                                    : QStringLiteral("像素工厂启动失败，请检查游戏服务与授权"), requested);
 }
 
 void SystemBackend::setDisplayBrightness(int percent)
