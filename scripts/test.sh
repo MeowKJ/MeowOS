@@ -27,6 +27,12 @@ grep -q 'Coordinate Transformation Matrix' scripts/meow-mindustry-launch.sh
 grep -q 'TERMINATING=1' scripts/meow-mindustry-launch.sh
 grep -q -- '-width 1280 -height 800 -maximized false -testMobile' scripts/meow-mindustry-launch.sh
 grep -q 'SDL_TOUCH_MOUSE_EVENTS=1' scripts/meow-mindustry-launch.sh
+! grep -q 'SDL_MOUSE_TOUCH_EVENTS=1' scripts/meow-mindustry-launch.sh
+grep -q 'preventStealing: true' qml/components/IosSwitch.qml
+! grep -q 'Behavior on color' qml/components/IosSwitch.qml
+grep -q 'switchRoot.toggled(!switchRoot.checked)' qml/components/IosSwitch.qml
+grep -q 'systemBackend.keepScreenOnApps.indexOf' qml/apps/SettingsApp.qml
+grep -q 'appId: "mindustry", title: "像素工厂"' qml/apps/SettingsApp.qml
 grep -q 'model.appId === "mindustry"' qml/Main.qml
 grep -q 'window.launchMindustryDirect()' qml/Main.qml
 grep -q 'startInMindustry' qml/Main.qml
@@ -51,7 +57,7 @@ grep -q 'QT_QUICK_BACKEND' scripts/meow-display-launcher
 grep -q 'performanceHistory' src/systembackend.h
 grep -q 'cpuFrequencies' src/systembackend.h
 grep -q 'maximumFlickVelocity' qml/components/SettingsFlickable.qml
-grep -q 'pressDelay: 0' qml/components/SettingsFlickable.qml
+grep -q 'pressDelay: 90' qml/components/SettingsFlickable.qml
 grep -q 'stack.depth > 1' qml/Main.qml
 grep -q 'inputLimit2400mA = 0x17' src/systembackend.cpp
 grep -q 'chargeCurrent2400mA = 0x28' src/systembackend.cpp
