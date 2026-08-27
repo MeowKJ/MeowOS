@@ -26,9 +26,9 @@ Rectangle {
         Rectangle {
             Layout.preferredWidth: 36
             Layout.preferredHeight: 36
+            Layout.alignment: Qt.AlignVCenter
             radius: 10
             color: navRow.accent
-            anchors.verticalCenter: parent.verticalCenter
 
             Image {
                 anchors.centerIn: parent
