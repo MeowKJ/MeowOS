@@ -49,4 +49,14 @@ public:
     virtual bool externalPowerPresent() const = 0;
 };
 
+// Process/session adapter. Implementations may use systemd, a lightweight
+// supervisor, or an embedded launcher; policy code must not depend on either.
+class IAppProcessHal {
+public:
+    virtual ~IAppProcessHal() = default;
+    virtual bool start(const std::string &appId) = 0;
+    virtual bool stop(const std::string &appId) = 0;
+    virtual bool isRunning(const std::string &appId) const = 0;
+};
+
 } // namespace meow

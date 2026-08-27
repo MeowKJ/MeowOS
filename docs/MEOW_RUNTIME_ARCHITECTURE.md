@@ -17,8 +17,9 @@ meow-core (policy and immutable state snapshots)
 ```
 
 The HAL contracts are pure C++ and do not include Qt, QML, systemd, or a
-specific SoC. A Rockchip adapter can therefore replace the Allwinner adapter
-without changing policy or UI code.
+specific SoC. This includes the application process adapter: systemd is only
+one possible implementation of `IAppProcessHal`. A Rockchip adapter can
+therefore replace the Allwinner adapter without changing policy or UI code.
 
 ## Scheduling model
 
