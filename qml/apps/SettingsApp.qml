@@ -966,6 +966,7 @@ Rectangle {
                                         MouseArea {
                                             id: pillMouse
                                             anchors.fill: parent
+                                            preventStealing: true
                                             onClicked: systemBackend.setSleepTimeoutSeconds(modelData.value)
                                         }
                                     }
@@ -1016,7 +1017,7 @@ Rectangle {
                                             Text { text: "仅关闭背光 · 快速毫秒唤醒"; color: "#77717D"; font.family: "Noto Sans CJK SC"; font.pixelSize: 12 }
                                         }
                                     }
-                                    MouseArea { id: level0Mouse; anchors.fill: parent; onClicked: systemBackend.setSleepPowerLevel(0) }
+                                    MouseArea { id: level0Mouse; anchors.fill: parent; preventStealing: true; onClicked: systemBackend.setSleepPowerLevel(0) }
                                 }
 
                                 // Level 1: Deep System Sleep
@@ -1043,7 +1044,7 @@ Rectangle {
                                             Text { text: "CPU锁定408MHz · 硬件极低功耗"; color: "#77717D"; font.family: "Noto Sans CJK SC"; font.pixelSize: 12 }
                                         }
                                     }
-                                    MouseArea { id: level1Mouse; anchors.fill: parent; onClicked: systemBackend.setSleepPowerLevel(1) }
+                                    MouseArea { id: level1Mouse; anchors.fill: parent; preventStealing: true; onClicked: systemBackend.setSleepPowerLevel(1) }
                                 }
                             }
                         }
@@ -1068,7 +1069,7 @@ Rectangle {
                                 width: parent.width; spacing: 8
                                 Repeater {
                                     model: [
-                                        { appId: "pvz", title: "植物大战僵尸", icon: "qrc:/assets/icons/sun.svg", desc: "战斗过程中保持屏幕常亮", accent: "#10B981" },
+                                        { appId: "mindustry", title: "像素工厂", icon: "qrc:/assets/icons/mindustry.png", desc: "建造与战斗过程中保持屏幕常亮", accent: "#59616A" },
                                         { appId: "touch-test", title: "点击测试", icon: "qrc:/assets/icons/mouse-pointer-click.svg", desc: "触摸多点测试中保持屏幕常亮", accent: "#FF4D6D" },
                                         { appId: "reaction-game", title: "喵喵反应", icon: "qrc:/assets/icons/zap-white.svg", desc: "极速反应挑战中保持屏幕常亮", accent: "#F59E0B" },
                                         { appId: "files", title: "文件管理", icon: "qrc:/assets/icons/folder.svg", desc: "长文档阅读与文件传输时保持常亮", accent: "#3B82F6" },
@@ -1077,7 +1078,7 @@ Rectangle {
                                     delegate: Rectangle {
                                         width: parent.width; height: 58; radius: 14
                                         color: "#FFFFFF"; border.color: "#E5E1F4"; border.width: 1
-                                        readonly property bool allowed: systemBackend.isAppKeepScreenOn(modelData.appId)
+                                        readonly property bool allowed: systemBackend.keepScreenOnApps.indexOf(modelData.appId) >= 0
 
                                         RowLayout {
                                             anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14; spacing: 12
