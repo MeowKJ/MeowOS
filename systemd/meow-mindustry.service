@@ -11,6 +11,9 @@ Type=simple
 ExecStartPre=/bin/systemctl stop meow-os.service
 ExecStart=/opt/mindustry/meow-mindustry-launch.sh
 ExecStopPost=-/bin/systemctl start meow-os.service
+# A stuck IME/X11 helper must never hold the desktop hand-off indefinitely.
+TimeoutStopSec=10s
+KillMode=control-group
 Restart=no
 
 [Install]
