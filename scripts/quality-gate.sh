@@ -4,6 +4,17 @@ set -eu
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT_DIR"
 
+# Runtime architecture invariants: these are intentionally fail-fast because
+# removing any one of them silently regresses isolation or resource safety.
+test -f src/runtime/task_scheduler.cpp
+grep -q 'queue_\.size() >= maxPendingTasks_' src/runtime/task_scheduler.cpp
+test -f src/runtime/app_session_supervisor.cpp
+grep -q 'if (appId.empty() || active_)' src/runtime/app_session_supervisor.cpp
+test -f src/runtime/runtime_snapshot.cpp
+grep -q 'atomic_load_explicit' src/runtime/runtime_snapshot.cpp
+test -f src/hal/hal_interfaces.cpp
+grep -q 'transformTouchPoint' src/hal/hal_interfaces.cpp
+
 score_elegance=0
 score_complete=0
 score_optimize=0
