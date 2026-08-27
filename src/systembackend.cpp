@@ -18,6 +18,8 @@
 #include <QUrl>
 #include <QtMath>
 #include <cstdio>
+#include <chrono>
+#include <stdexcept>
 
 #ifdef Q_OS_LINUX
 #include <fcntl.h>
@@ -875,7 +877,7 @@ QString availableDestination(const QString &directory, const QString &name)
 
 SystemBackend::SystemBackend(QObject *parent)
     : QObject(parent), m_statusWatcher(this), m_wifiScanWatcher(this), m_wifiOperationWatcher(this),
-      m_ethernetOperationWatcher(this), m_mindustryLaunchWatcher(this)
+      m_ethernetOperationWatcher(this)
 {
     m_hardwareCapabilities = detectHardwareCapabilities(&m_boardProfile);
     QSettings calibration(QStringLiteral("Meow OS"), QStringLiteral("battery"));
@@ -996,8 +998,20 @@ SystemBackend::SystemBackend(QObject *parent)
         emit operationMessage(result.value(QStringLiteral("message")).toString(), ok);
         if (!m_filePath.isEmpty()) browseDirectory(m_filePath);
     });
-    connect(&m_mindustryLaunchWatcher, &QFutureWatcher<int>::finished, this, [this]() {
-        const bool requested = m_mindustryLaunchWatcher.result() == 0;
+    m_mindustryLaunchPollTimer.setInterval(50);
+    m_mindustryLaunchPollTimer.setSingleShot(false);
+    connect(&m_mindustryLaunchPollTimer, &QTimer::timeout, this, [this]() {
+        if (!m_mindustryLaunchFuture.valid()
+                || m_mindustryLaunchFuture.wait_for(std::chrono::milliseconds(0))
+                   != std::future_status::ready) return;
+        m_mindustryLaunchPollTimer.stop();
+        bool requested = false;
+        try {
+            m_mindustryLaunchFuture.get();
+            requested = true;
+        } catch (...) {
+            requested = false;
+        }
         emit operationMessage(requested ? QStringLiteral("像素工厂正在启动…")
                                         : QStringLiteral("像素工厂启动失败，请检查游戏服务与授权"),
                               requested);
@@ -1631,15 +1645,19 @@ void SystemBackend::playVolumeFeedback()
 
 void SystemBackend::launchMindustry()
 {
-    if (m_mindustryLaunchWatcher.isRunning()) return;
+    if (m_mindustryLaunchFuture.valid()
+            && m_mindustryLaunchFuture.wait_for(std::chrono::milliseconds(0))
+               != std::future_status::ready) return;
     // systemctl can block while policykit/sudo resolves credentials. Keep it
     // off the Qt GUI thread so a tap always receives immediate feedback.
-    m_mindustryLaunchWatcher.setFuture(QtConcurrent::run([]() {
-        return QProcess::execute(QStringLiteral("sudo"),
-                                 {QStringLiteral("-n"), QStringLiteral("/bin/systemctl"),
-                                  QStringLiteral("--no-block"), QStringLiteral("start"),
-                                  QStringLiteral("meow-mindustry.service")});
-    }));
+    m_mindustryLaunchFuture = m_runtimeScheduler.submit(meow::TaskPriority::Interactive, [] {
+        const int exitCode = QProcess::execute(QStringLiteral("sudo"),
+                                               {QStringLiteral("-n"), QStringLiteral("/bin/systemctl"),
+                                                QStringLiteral("--no-block"), QStringLiteral("start"),
+                                                QStringLiteral("meow-mindustry.service")});
+        if (exitCode != 0) throw std::runtime_error("mindustry service start failed");
+    });
+    m_mindustryLaunchPollTimer.start();
     emit operationMessage(QStringLiteral("像素工厂启动请求已提交…"), true);
 }
 

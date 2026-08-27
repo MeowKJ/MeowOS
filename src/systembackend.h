@@ -10,6 +10,10 @@
 #include <QVariantMap>
 #include <QVector>
 
+#include <future>
+
+#include "runtime/task_scheduler.h"
+
 class SystemBackend final : public QObject
 {
     Q_OBJECT
@@ -356,7 +360,9 @@ private:
     QFutureWatcher<QVariantMap> m_directoryWatcher;
     QFutureWatcher<QVariantMap> m_previewWatcher;
     QFutureWatcher<QVariantMap> m_fileOperationWatcher;
-    QFutureWatcher<int> m_mindustryLaunchWatcher;
+    meow::TaskScheduler m_runtimeScheduler{2};
+    std::future<void> m_mindustryLaunchFuture;
+    QTimer m_mindustryLaunchPollTimer;
     int m_pendingVolumePercent = 65;
     QTimer m_volumeSetTimer;
     QProcess m_volumeSetProcess;
