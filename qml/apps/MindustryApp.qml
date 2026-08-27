@@ -25,7 +25,10 @@ Rectangle {
             width: parent.width - 64; height: 210; radius: 28
             color: "#242038"
             Text { anchors.centerIn: parent; text: "像素工厂"; color: "#FFFFFF"; font.pixelSize: 36; font.weight: Font.Bold }
-            Text { anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 24 }; text: "Mindustry"; color: "#BDB6E8"; font.pixelSize: 16 }
+            Text {
+                anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 24 }
+                text: "Mindustry"; color: "#BDB6E8"; font.pixelSize: 16
+            }
         }
         Text {
             width: parent.width - 64; wrapMode: Text.WordWrap
