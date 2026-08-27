@@ -80,25 +80,25 @@ ApplicationWindow {
         if (appId === "touch-test") {
             if (!cachedTouchTest || !cachedTouchTest.parent) {
                 cachedTouchTest = touchTestComponent.createObject(stack)
-                if (cachedTouchTest) cachedTouchTest.StackView.destroyOnPop = false
+                if (cachedTouchTest) cachedTouchTest.StackView.destroyOnPop = true
             }
             return cachedTouchTest
         } else if (appId === "reaction-game") {
             if (!cachedReactionGame || !cachedReactionGame.parent) {
                 cachedReactionGame = reactionGameComponent.createObject(stack)
-                if (cachedReactionGame) cachedReactionGame.StackView.destroyOnPop = false
+                if (cachedReactionGame) cachedReactionGame.StackView.destroyOnPop = true
             }
             return cachedReactionGame
         } else if (appId === "files") {
             if (!cachedFileManager || !cachedFileManager.parent) {
                 cachedFileManager = fileManagerComponent.createObject(stack)
-                if (cachedFileManager) cachedFileManager.StackView.destroyOnPop = false
+                if (cachedFileManager) cachedFileManager.StackView.destroyOnPop = true
             }
             return cachedFileManager
         } else if (appId === "settings") {
             if (!cachedSettings || !cachedSettings.parent) {
                 cachedSettings = settingsComponent.createObject(stack)
-                if (cachedSettings) cachedSettings.StackView.destroyOnPop = false
+                if (cachedSettings) cachedSettings.StackView.destroyOnPop = true
             }
             return cachedSettings
         }
@@ -258,23 +258,6 @@ ApplicationWindow {
             window.operationText = message
             window.operationSuccess = success
             toast.show()
-        }
-    }
-
-    Timer {
-        id: bgAppPrewarmTimer
-        interval: 350
-        running: true
-        repeat: false
-        onTriggered: {
-            if (!cachedSettings) cachedSettings = settingsComponent.createObject(stack, { visible: false })
-            if (cachedSettings) cachedSettings.StackView.destroyOnPop = false
-            if (!cachedFileManager) cachedFileManager = fileManagerComponent.createObject(stack, { visible: false })
-            if (cachedFileManager) cachedFileManager.StackView.destroyOnPop = false
-            if (!cachedTouchTest) cachedTouchTest = touchTestComponent.createObject(stack, { visible: false })
-            if (cachedTouchTest) cachedTouchTest.StackView.destroyOnPop = false
-            if (!cachedReactionGame) cachedReactionGame = reactionGameComponent.createObject(stack, { visible: false })
-            if (cachedReactionGame) cachedReactionGame.StackView.destroyOnPop = false
         }
     }
 

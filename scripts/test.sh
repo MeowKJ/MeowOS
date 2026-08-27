@@ -89,6 +89,8 @@ grep -q 'function openSection(name, index)' qml/apps/SettingsApp.qml
 grep -q 'prewarmTimer' qml/apps/SettingsApp.qml
 grep -q 'settings-switch' qml/apps/SettingsApp.qml
 grep -q 'qaSwitchTimer' qml/apps/SettingsApp.qml
+! grep -q 'bgAppPrewarmTimer' qml/Main.qml
+test "$(grep -c 'StackView.destroyOnPop = true' qml/Main.qml)" -eq 4
 ! grep -q '驱动未提供忙碌率' qml/apps/SettingsApp.qml
 grep -q '\$1 == "timeout" { \$2 = "0" }' scripts/configure-boot-branding
 grep -q 'U_BOOT_TIMEOUT=' scripts/configure-boot-branding
