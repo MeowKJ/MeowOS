@@ -12,6 +12,8 @@ namespace meow {
 // can own the display at a time.
 class AppSessionSupervisor final {
 public:
+    bool beginStart(const std::string &appId);
+    bool markRunning();
     bool start(const std::string &appId);
     bool stop();
     bool fail();

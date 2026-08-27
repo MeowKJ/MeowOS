@@ -4,13 +4,23 @@ namespace meow {
 
 const std::string AppSessionSupervisor::emptyAppId_;
 
-bool AppSessionSupervisor::start(const std::string &appId)
+bool AppSessionSupervisor::beginStart(const std::string &appId)
 {
     if (appId.empty() || active_) return false;
     std::unique_ptr<AppSession> candidate(new AppSession(appId));
-    if (!candidate->requestStart() || !candidate->markRunning()) return false;
+    if (!candidate->requestStart()) return false;
     active_ = std::move(candidate);
     return true;
+}
+
+bool AppSessionSupervisor::markRunning()
+{
+    return active_ && active_->markRunning();
+}
+
+bool AppSessionSupervisor::start(const std::string &appId)
+{
+    return beginStart(appId) && markRunning();
 }
 
 bool AppSessionSupervisor::stop()

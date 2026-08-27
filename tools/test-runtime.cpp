@@ -32,6 +32,11 @@ int main()
     assert(!supervisor.start("another-app"));
     assert(supervisor.stop());
     assert(!supervisor.hasActiveSession());
+    assert(supervisor.beginStart("reaction-game"));
+    assert(supervisor.state() == meow::AppSessionState::Starting);
+    assert(!supervisor.beginStart("another-app"));
+    assert(supervisor.markRunning());
+    assert(supervisor.stop());
     assert(supervisor.start("settings"));
     assert(supervisor.fail());
 

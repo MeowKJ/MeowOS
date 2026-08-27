@@ -59,6 +59,9 @@ The supervisor owns at most one session, rejects a second foreground launch,
 and releases the slot on a clean stop or failure. A future systemd/Wayland
 adapter can perform the actual process and surface hand-off without changing
 this policy code.
+`beginStart()` and `markRunning()` are separate so asynchronous process launch
+and surface negotiation are represented explicitly instead of being reported
+as running before the adapter confirms readiness.
 
 The Qt shell follows the same rule: application views are created on demand,
 never prewarmed invisibly, and are destroyed when popped from the foreground
