@@ -16,6 +16,8 @@ struct DisplayGeometry {
 struct TouchPoint {
     double x = 0.0;
     double y = 0.0;
+    TouchPoint() = default;
+    TouchPoint(double xValue, double yValue) : x(xValue), y(yValue) {}
 };
 
 // Keep coordinate transforms in the HAL contract so every frontend (EGLFS,
