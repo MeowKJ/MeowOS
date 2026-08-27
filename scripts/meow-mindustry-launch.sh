@@ -99,9 +99,10 @@ DISPLAY=:0 xinput list-props "$TOUCH_ID" >/var/log/meow-mindustry-xinput.log 2>&
 # Debian image does not ship util-linux runuser; setpriv provides the same
 # privilege drop without requiring an interactive shell.
 set +e
-/usr/bin/setpriv --reuid=radxa --regid=radxa --init-groups env DISPLAY=:0 SDL_VIDEODRIVER=x11 HOME=/home/radxa \
+/usr/bin/setpriv --reuid=radxa --regid=radxa --init-groups env \
+    DISPLAY=:0 SDL_VIDEODRIVER=x11 SDL_MOUSE_TOUCH_EVENTS=1 SDL_TOUCH_MOUSE_EVENTS=1 HOME=/home/radxa \
     /usr/lib/jvm/java-17-openjdk-arm64/bin/java -Xms128m -Xmx512m -jar "$JAR" \
-    -gl 2.1 -compatibilityGl -maximized true "$@"
+    -gl 2.1 -compatibilityGl -width 1280 -height 800 -maximized false -testMobile "$@"
 GAME_STATUS=$?
 set -e
 
