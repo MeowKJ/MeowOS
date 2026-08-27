@@ -1,1 +1,1 @@
-radxa ALL=(root) NOPASSWD: /bin/systemctl start meow-mindustry.service
+radxa ALL=(root) NOPASSWD: /bin/systemctl --no-block start meow-mindustry.service
