@@ -24,7 +24,8 @@ enum class TaskPriority : std::uint8_t {
 // never runs here directly; they submit work and receive a future/event back.
 class TaskScheduler final {
 public:
-    explicit TaskScheduler(std::size_t workerCount = 0);
+    explicit TaskScheduler(std::size_t workerCount = 0,
+                           std::size_t maxPendingTasks = 1024);
     ~TaskScheduler();
 
     TaskScheduler(const TaskScheduler &) = delete;
@@ -53,6 +54,7 @@ private:
     std::priority_queue<WorkItem, std::vector<WorkItem>, WorkOrder> queue_;
     std::vector<std::thread> workers_;
     std::atomic<std::uint64_t> nextSequence_{0};
+    const std::size_t maxPendingTasks_;
     bool stopping_ = false;
 };
 

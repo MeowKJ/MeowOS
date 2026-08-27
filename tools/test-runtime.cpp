@@ -6,6 +6,7 @@
 #include <atomic>
 #include <cassert>
 #include <thread>
+#include <stdexcept>
 #include <vector>
 
 int main()
@@ -43,5 +44,22 @@ int main()
         job.get();
     assert(completed.load() == 32);
     scheduler.shutdown();
+
+    meow::TaskScheduler bounded(1, 1);
+    std::promise<void> release;
+    std::future<void> gate = release.get_future();
+    const std::future<void> first = bounded.submit(meow::TaskPriority::Background,
+                                                    [&gate] { gate.wait(); });
+    bool rejected = false;
+    try {
+        bounded.submit(meow::TaskPriority::Background, [] {});
+        bounded.submit(meow::TaskPriority::Background, [] {});
+    } catch (const std::runtime_error &) {
+        rejected = true;
+    }
+    assert(rejected);
+    release.set_value();
+    first.wait();
+    bounded.shutdown();
     return 0;
 }

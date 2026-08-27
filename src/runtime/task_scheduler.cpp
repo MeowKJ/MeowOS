@@ -5,7 +5,8 @@
 
 namespace meow {
 
-TaskScheduler::TaskScheduler(std::size_t workerCount)
+TaskScheduler::TaskScheduler(std::size_t workerCount, std::size_t maxPendingTasks)
+    : maxPendingTasks_(std::max<std::size_t>(1, maxPendingTasks))
 {
     if (workerCount == 0)
         workerCount = std::max<std::size_t>(2, std::thread::hardware_concurrency());
@@ -35,6 +36,8 @@ std::future<void> TaskScheduler::submit(TaskPriority priority, std::function<voi
         std::lock_guard<std::mutex> lock(mutex_);
         if (stopping_)
             throw std::runtime_error("TaskScheduler is stopped");
+        if (queue_.size() >= maxPendingTasks_)
+            throw std::runtime_error("TaskScheduler queue is full");
         queue_.push(WorkItem{priority, nextSequence_.fetch_add(1),
                              [packaged]() { (*packaged)(); }});
     }

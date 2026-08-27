@@ -32,6 +32,11 @@ Workers drain higher-priority work first and preserve FIFO order within a
 priority. The UI thread never waits on hardware or process I/O. Results are
 returned as futures/events and published as immutable snapshots.
 
+The queue has a configurable pending-task limit (1024 by default). Producers
+receive an explicit `TaskScheduler queue is full` failure instead of silently
+creating unbounded memory pressure; callers can then coalesce telemetry or
+retry interactive work according to policy.
+
 There is no thread-per-device rule. The worker count is bounded by available
 cores, and shutdown drains queued work before joining workers. Long-running
 application processes remain isolated in their own systemd session so they
