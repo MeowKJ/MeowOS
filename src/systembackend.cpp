@@ -1377,7 +1377,7 @@ void SystemBackend::refreshPerformance()
     runtimeSnapshot.memoryPercent = m_memoryPercent;
     runtimeSnapshot.gpuPercent = m_gpuUsage;
     runtimeSnapshot.displayRotation = displayRotation();
-    runtimeSnapshot.foregroundApp = m_activeScope;
+    runtimeSnapshot.foregroundApp = m_activeScope.toStdString();
     m_runtimeSnapshotStore.publish(std::move(runtimeSnapshot));
     emit performanceChanged();
 }
