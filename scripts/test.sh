@@ -118,6 +118,7 @@ test -x scripts/build-linux.sh
 test -x scripts/verify-device.sh
 test -x scripts/build-runtime.sh
 test -f cmake/runtime-tests/CMakeLists.txt
+test -f .github/workflows/quality.yml
 if [ "$(uname -s)" = Linux ]; then
     c++ -std=c++11 -Wall -Wextra -Werror -pthread \
         -Isrc tools/test-runtime.cpp src/runtime/task_scheduler.cpp \
