@@ -9,6 +9,8 @@ Rectangle {
     property int frequencyMhz: 0
     property int maxFrequencyMhz: 0
     property real temperatureC: 0
+    property int schedulerPendingTasks: 0
+    property int schedulerRunningTasks: 0
 
     implicitWidth: 400
     implicitHeight: 236
@@ -68,12 +70,16 @@ Rectangle {
         }
 
         StatusPill {
-            state: cpuCardRoot.cpuTotal < 0 ? "info"
+            state: cpuCardRoot.schedulerPendingTasks >= 8 ? "error"
+                   : (cpuCardRoot.schedulerPendingTasks > 0 ? "warning"
+                   : (cpuCardRoot.cpuTotal < 0 ? "info"
                    : (cpuCardRoot.cpuTotal >= 85 ? "error"
-                   : (cpuCardRoot.cpuTotal >= 65 ? "warning" : "ok"))
-            label: cpuCardRoot.cpuTotal < 0 ? "等待采样"
-                  : (cpuCardRoot.cpuTotal >= 85 ? "负载过高"
-                  : (cpuCardRoot.cpuTotal >= 65 ? "负载偏高" : "负载正常"))
+                   : (cpuCardRoot.cpuTotal >= 65 ? "warning" : "ok"))))
+            label: cpuCardRoot.schedulerPendingTasks > 0
+                   ? "后台队列 " + cpuCardRoot.schedulerPendingTasks
+                   : (cpuCardRoot.cpuTotal < 0 ? "等待采样"
+                   : (cpuCardRoot.cpuTotal >= 85 ? "负载过高"
+                   : (cpuCardRoot.cpuTotal >= 65 ? "负载偏高" : "负载正常")))
         }
 
         // Hardware-Cached 2D Gradient Area Sparkline

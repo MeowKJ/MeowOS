@@ -1179,6 +1179,8 @@ Rectangle {
                             frequencyMhz: systemBackend.cpuFrequencyMhz
                             maxFrequencyMhz: systemBackend.cpuMaxFrequencyMhz
                             temperatureC: systemBackend.cpuTemperatureC
+                            schedulerPendingTasks: systemBackend.schedulerPendingTasks
+                            schedulerRunningTasks: systemBackend.schedulerRunningTasks
                         }
 
                         PerformanceRamGpuCard {
