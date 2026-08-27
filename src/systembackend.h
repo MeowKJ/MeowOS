@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QElapsedTimer>
 #include <QEvent>
 #include <QObject>
 #include <QFutureWatcher>
@@ -211,6 +212,7 @@ public:
     Q_INVOKABLE void setEthernetConnected(const QString &interfaceName, bool connected);
     Q_INVOKABLE void setVolume(int percent);
     Q_INVOKABLE void playVolumeFeedback();
+    Q_INVOKABLE void launchMindustry();
     Q_INVOKABLE void setDisplayBrightness(int percent);
     Q_INVOKABLE void setSleepTimeoutSeconds(int seconds);
     Q_INVOKABLE void setSleepTimeoutIndex(int index);
@@ -327,7 +329,7 @@ private:
     int m_brightnessMax = 0;
     bool m_statusRefreshPending = false;
     QString m_activeScope = QStringLiteral("home");
-    qint64 m_lastInputMs = 0;
+    QElapsedTimer m_idleElapsedTimer;
     int m_cpuTotal = -1;
     QVariantList m_cpuUsage;
     QVariantList m_cpuFrequencies;

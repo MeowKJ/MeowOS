@@ -908,7 +908,7 @@ SystemBackend::SystemBackend(QObject *parent)
         fileSettings.setValue(QStringLiteral("favoriteDefaultsVersion"), 2);
         fileSettings.setValue(QStringLiteral("favoritesInitialized"), true);
     }
-    m_lastInputMs = QDateTime::currentMSecsSinceEpoch();
+    m_idleElapsedTimer.start();
     if (qApp) qApp->installEventFilter(this);
     m_volumeSetTimer.setSingleShot(true);
     m_volumeSetTimer.setInterval(80);
@@ -997,6 +997,7 @@ SystemBackend::SystemBackend(QObject *parent)
         if (!m_filePath.isEmpty()) browseDirectory(m_filePath);
     });
     refresh();
+    QTimer::singleShot(250, this, &SystemBackend::refreshPerformance);
 }
 
 QString SystemBackend::version() const { return QStringLiteral(MEOW_OS_VERSION); }
@@ -1116,12 +1117,15 @@ void SystemBackend::setActiveScope(const QString &scope)
 {
     if (m_activeScope == scope) return;
     m_activeScope = scope;
+    if (scope == QLatin1String("performance")) {
+        refreshPerformance();
+    }
     if (!m_statusWatcher.isRunning()) refreshStatus();
 }
 
 qint64 SystemBackend::idleMs() const
 {
-    return QDateTime::currentMSecsSinceEpoch() - m_lastInputMs;
+    return m_idleElapsedTimer.isValid() ? m_idleElapsedTimer.elapsed() : 0;
 }
 
 bool SystemBackend::eventFilter(QObject *watched, QEvent *event)
@@ -1131,7 +1135,7 @@ bool SystemBackend::eventFilter(QObject *watched, QEvent *event)
     case QEvent::MouseButtonPress:
     case QEvent::TouchBegin:
     case QEvent::KeyPress:
-        m_lastInputMs = QDateTime::currentMSecsSinceEpoch();
+        m_idleElapsedTimer.restart();
         if (m_screenSleeping) {
             wakeScreen();
             return true;
@@ -1141,7 +1145,7 @@ bool SystemBackend::eventFilter(QObject *watched, QEvent *event)
     case QEvent::MouseButtonRelease:
     case QEvent::TouchEnd:
     case QEvent::Wheel:
-        m_lastInputMs = QDateTime::currentMSecsSinceEpoch();
+        m_idleElapsedTimer.restart();
         break;
     default:
         break;
@@ -1519,8 +1523,12 @@ void SystemBackend::applyStatusSnapshot(const QVariantMap &snapshot)
 
     const QString backlightPath = snapshot.value(QStringLiteral("backlightPath")).toString();
     const int brightnessMax = snapshot.value(QStringLiteral("brightnessMax")).toInt();
-    const int brightnessPercent = snapshot.value(QStringLiteral("displayBrightnessPercent"), -1).toInt();
+    int brightnessPercent = snapshot.value(QStringLiteral("displayBrightnessPercent"), -1).toInt();
     const bool brightnessAvailable = snapshot.value(QStringLiteral("brightnessAvailable")).toBool();
+    if (brightnessAvailable && brightnessPercent <= 0 && brightnessMax > 0 && !m_screenSleeping) {
+        brightnessPercent = 75;
+        setDisplayBrightness(75);
+    }
     if (backlightPath != m_backlightPath || brightnessMax != m_brightnessMax
             || brightnessPercent != m_displayBrightnessPercent
             || brightnessAvailable != m_brightnessAvailable) {
@@ -1613,6 +1621,13 @@ void SystemBackend::playVolumeFeedback()
                                  QStringLiteral("-D"), QStringLiteral("meow_volume"),
                                  QStringLiteral("/opt/meow-os/assets/sounds/volume-meow.wav")});
     });
+}
+
+void SystemBackend::launchMindustry()
+{
+    const bool started = QProcess::startDetached(QStringLiteral("/opt/mindustry/meow-mindustry-launch.sh"));
+    emit operationMessage(started ? QStringLiteral("像素工厂已启动")
+                                  : QStringLiteral("像素工厂启动失败，请检查游戏文件"), started);
 }
 
 void SystemBackend::setDisplayBrightness(int percent)
@@ -1775,7 +1790,7 @@ void SystemBackend::setScreenSleeping(bool sleeping)
             }
         }
         m_activeScope = m_savedScopeBeforeSleep.isEmpty() ? QStringLiteral("home") : m_savedScopeBeforeSleep;
-        m_lastInputMs = QDateTime::currentMSecsSinceEpoch();
+        m_idleElapsedTimer.restart();
         refreshStatus();
     }
     emit screenSleepingChanged();
@@ -2023,4 +2038,3 @@ QString SystemBackend::loadAppData(const QString &key, const QString &defaultVal
     QSettings settings(QStringLiteral("Meow OS"), QStringLiteral("apps"));
     return settings.value(key, defaultValue).toString();
 }
-

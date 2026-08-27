@@ -31,10 +31,11 @@ ApplicationWindow {
     property var ethernetDialog: ethernetDialog
     property bool screenDimmed: false
     readonly property bool settingsForeground: stack.currentItem
-                                               && stack.currentItem.objectName === "meow-settings-page"
+                                               && (stack.currentItem.objectName === "settings"
+                                                   || stack.currentItem.objectName === "meow-settings-page")
     property int brightnessBeforeDim: -1
     property int idleDimDelayMs: 90000
-    property string lastSettingsSection: ""
+    property string lastSettingsSection: initialSettingsSection
     property string initialSettingsSection: Qt.application.arguments.indexOf("--ethernet") >= 0
                                             || Qt.application.arguments.indexOf("--ethernet-config") >= 0
                                             ? "ethernet"
@@ -73,7 +74,7 @@ ApplicationWindow {
     property var cachedReactionGame: null
     property var cachedFileManager: null
     property var cachedSettings: null
-    property var cachedPvZ: null
+    property var cachedMindustry: null
 
     function getAppObject(appId) {
         if (appId === "touch-test") {
@@ -88,12 +89,6 @@ ApplicationWindow {
                 if (cachedReactionGame) cachedReactionGame.StackView.destroyOnPop = false
             }
             return cachedReactionGame
-        } else if (appId === "pvz") {
-            if (!cachedPvZ || !cachedPvZ.parent) {
-                cachedPvZ = pvzComponent.createObject(stack)
-                if (cachedPvZ) cachedPvZ.StackView.destroyOnPop = false
-            }
-            return cachedPvZ
         } else if (appId === "files") {
             if (!cachedFileManager || !cachedFileManager.parent) {
                 cachedFileManager = fileManagerComponent.createObject(stack)
@@ -106,6 +101,12 @@ ApplicationWindow {
                 if (cachedSettings) cachedSettings.StackView.destroyOnPop = false
             }
             return cachedSettings
+        } else if (appId === "mindustry") {
+            if (!cachedMindustry || !cachedMindustry.parent) {
+                cachedMindustry = mindustryComponent.createObject(stack)
+                if (cachedMindustry) cachedMindustry.StackView.destroyOnPop = false
+            }
+            return cachedMindustry
         }
         return null
     }
@@ -236,11 +237,11 @@ ApplicationWindow {
 
     ListModel {
         id: appRegistry
-        ListElement { appId: "pvz"; appTitle: "植物大战僵尸"; iconSource: "qrc:/assets/icons/sun.svg"; accent: "#10B981" }
         ListElement { appId: "reaction-game"; appTitle: "喵喵反应"; iconSource: "qrc:/assets/icons/zap-white.svg"; accent: "#F59E0B" }
         ListElement { appId: "touch-test"; appTitle: "点击测试"; iconSource: "qrc:/assets/icons/mouse-pointer-click.svg"; accent: "#FF4D6D" }
         ListElement { appId: "files"; appTitle: "文件"; iconSource: "qrc:/assets/icons/folder.svg"; accent: "#3B82F6" }
         ListElement { appId: "settings"; appTitle: "设置"; iconSource: "qrc:/assets/icons/settings.svg"; accent: "#8B5CF6" }
+        ListElement { appId: "mindustry"; appTitle: "像素工厂"; iconSource: "qrc:/assets/icons/zap-white.svg"; accent: "#E879F9" }
     }
 
     Timer {
@@ -276,8 +277,6 @@ ApplicationWindow {
             if (cachedTouchTest) cachedTouchTest.StackView.destroyOnPop = false
             if (!cachedReactionGame) cachedReactionGame = reactionGameComponent.createObject(stack, { visible: false })
             if (cachedReactionGame) cachedReactionGame.StackView.destroyOnPop = false
-            if (!cachedPvZ) cachedPvZ = pvzComponent.createObject(stack, { visible: false })
-            if (cachedPvZ) cachedPvZ.StackView.destroyOnPop = false
         }
     }
 
@@ -531,9 +530,9 @@ ApplicationWindow {
     }
 
     Component {
-        id: pvzComponent
-        PvZApp {
-            objectName: "pvz"
+        id: mindustryComponent
+        MindustryApp {
+            objectName: "mindustry"
             onExitRequested: stack.pop()
             onBackRequested: stack.pop()
         }
@@ -616,7 +615,7 @@ ApplicationWindow {
                             color: "#EDE9FE"
                             Image {
                                 anchors.centerIn: parent; width: 20; height: 20
-                                source: "qrc:/assets/icons/wifi-high.svg"
+                                source: "qrc:/assets/icons/wifi.svg"
                                 sourceSize.width: 40; sourceSize.height: 40
                             }
                         }
