@@ -3,12 +3,20 @@ set -eu
 
 JAR=/opt/mindustry/Mindustry.jar
 XORG_PID=
+TERMINATING=0
 [ -r "$JAR" ] || { echo "Mindustry.jar not found" >&2; exit 1; }
 
 cleanup() {
     if [ -n "$XORG_PID" ]; then kill "$XORG_PID" 2>/dev/null || true; wait "$XORG_PID" 2>/dev/null || true; fi
 }
-trap cleanup EXIT INT TERM
+
+handle_signal() {
+    TERMINATING=1
+    cleanup
+}
+
+trap cleanup EXIT
+trap handle_signal INT TERM
 
 # This appliance has no persistent desktop X server. Remove a stale process or
 # lock left by an interrupted game session before taking over VT1/DRM.
@@ -57,17 +65,47 @@ while [ ! -S /tmp/.X11-unix/X0 ]; do
     sleep 0.1
 done
 
-# The attached panel is physically portrait (800x1280), while the game UI is
-# designed for the Meow OS landscape workspace.  Rotate only this temporary
-# Xorg session; the normal Meow OS EGLFS configuration is left untouched.
-# The modesetting driver exposes the panel as DSI-1 and applies the rotation
-# before SDL queries the desktop size, yielding a 1280x800 game surface.
-if command -v xrandr >/dev/null 2>&1; then
-    xrandr --display :0 --output DSI-1 --rotate left >/var/log/meow-mindustry-xrandr.log 2>&1 || true
-fi
+# The panel is physically portrait (800x1280).  Rotate the connected output
+# before SDL queries the desktop size, then apply the inverse transform to the
+# touchscreen so physical taps continue to land on the rotated game surface.
+# These tools are hard requirements: silently continuing creates a portrait,
+# non-touchable game, which is worse than a clear service failure.
+command -v xrandr >/dev/null 2>&1 || { echo "xrandr is required" >&2; exit 1; }
+command -v xinput >/dev/null 2>&1 || { echo "xinput is required" >&2; exit 1; }
+
+OUTPUT=$(DISPLAY=:0 xrandr --query | awk '$2 == "connected" { print $1; exit }')
+[ -n "$OUTPUT" ] || { echo "No connected X11 output found" >&2; exit 1; }
+DISPLAY=:0 xrandr --output "$OUTPUT" --rotate left >/var/log/meow-mindustry-xrandr.log 2>&1
+DISPLAY=:0 xrandr --query >>/var/log/meow-mindustry-xrandr.log 2>&1
+
+TOUCH_ID=
+i=0
+while [ -z "$TOUCH_ID" ] && [ "$i" -lt 30 ]; do
+    TOUCH_ID=$(DISPLAY=:0 xinput list --id-only "jadard-touchscreen" 2>/dev/null || true)
+    i=$((i + 1))
+    [ -n "$TOUCH_ID" ] || sleep 0.1
+done
+[ -n "$TOUCH_ID" ] || {
+    DISPLAY=:0 xinput list >&2 || true
+    echo "jadard-touchscreen is not available through XInput" >&2
+    exit 1
+}
+
+# x' = 1-y, y' = x is the inverse mapping for an XRandR left rotation.
+DISPLAY=:0 xinput set-prop "$TOUCH_ID" "Coordinate Transformation Matrix" \
+    0 -1 1 1 0 0 0 0 1
+DISPLAY=:0 xinput list-props "$TOUCH_ID" >/var/log/meow-mindustry-xinput.log 2>&1
 
 # Debian image does not ship util-linux runuser; setpriv provides the same
 # privilege drop without requiring an interactive shell.
+set +e
 /usr/bin/setpriv --reuid=radxa --regid=radxa --init-groups env DISPLAY=:0 SDL_VIDEODRIVER=x11 HOME=/home/radxa \
     /usr/lib/jvm/java-17-openjdk-arm64/bin/java -Xms128m -Xmx512m -jar "$JAR" \
     -gl 2.1 -compatibilityGl -maximized true "$@"
+GAME_STATUS=$?
+set -e
+
+# systemd terminates the complete cgroup.  Java may report a broken X
+# connection while Xorg is being cleaned up; that is an expected normal stop.
+[ "$TERMINATING" -eq 1 ] && exit 0
+exit "$GAME_STATUS"
