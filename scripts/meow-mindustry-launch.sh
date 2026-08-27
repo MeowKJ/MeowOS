@@ -3,10 +3,16 @@ set -eu
 
 JAR=/opt/mindustry/Mindustry.jar
 XORG_PID=
+FCITX_PID=
+ONBOARD_PID=
+PALETTE_PID=
 TERMINATING=0
 [ -r "$JAR" ] || { echo "Mindustry.jar not found" >&2; exit 1; }
 
 cleanup() {
+    if [ -n "$PALETTE_PID" ]; then kill "$PALETTE_PID" 2>/dev/null || true; wait "$PALETTE_PID" 2>/dev/null || true; fi
+    if [ -n "$ONBOARD_PID" ]; then kill "$ONBOARD_PID" 2>/dev/null || true; wait "$ONBOARD_PID" 2>/dev/null || true; fi
+    if [ -n "$FCITX_PID" ]; then kill "$FCITX_PID" 2>/dev/null || true; wait "$FCITX_PID" 2>/dev/null || true; fi
     if [ -n "$XORG_PID" ]; then kill "$XORG_PID" 2>/dev/null || true; wait "$XORG_PID" 2>/dev/null || true; fi
 }
 
@@ -96,11 +102,57 @@ DISPLAY=:0 xinput set-prop "$TOUCH_ID" "Coordinate Transformation Matrix" \
     0 -1 1 1 0 0 0 0 1
 DISPLAY=:0 xinput list-props "$TOUCH_ID" >/var/log/meow-mindustry-xinput.log 2>&1
 
+# Provide a touch keyboard without covering the game until it is needed.  The
+# small Onboard palette stays at the top-left; tapping it expands the keyboard
+# along the bottom edge.  Fcitx5 receives the same X11 session so pinyin text
+# can be committed to Mindustry's SDL text fields.
+USER_ENV="DISPLAY=:0 XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus XMODIFIERS=@im=fcitx GTK_IM_MODULE=fcitx QT_IM_MODULE=fcitx HOME=/home/radxa"
+if command -v fcitx5 >/dev/null 2>&1; then
+    /usr/bin/setpriv --reuid=radxa --regid=radxa --init-groups env $USER_ENV \
+        /usr/bin/fcitx5 -d >/var/log/meow-mindustry-fcitx5.log 2>&1 &
+    FCITX_PID=$!
+fi
+if command -v onboard >/dev/null 2>&1; then
+    /usr/bin/setpriv --reuid=radxa --regid=radxa --init-groups env $USER_ENV \
+        gsettings set org.onboard.icon-palette in-use true >/dev/null 2>&1 || true
+    /usr/bin/setpriv --reuid=radxa --regid=radxa --init-groups env $USER_ENV \
+        gsettings set org.onboard.window force-to-top true >/dev/null 2>&1 || true
+    /usr/bin/setpriv --reuid=radxa --regid=radxa --init-groups env $USER_ENV \
+        gsettings set org.onboard.window.landscape y 500 >/dev/null 2>&1 || true
+    /usr/bin/setpriv --reuid=radxa --regid=radxa --init-groups env $USER_ENV \
+        gsettings set org.onboard.window.landscape width 1280 >/dev/null 2>&1 || true
+    /usr/bin/setpriv --reuid=radxa --regid=radxa --init-groups env $USER_ENV \
+        gsettings set org.onboard.window.landscape height 300 >/dev/null 2>&1 || true
+    /usr/bin/setpriv --reuid=radxa --regid=radxa --init-groups env $USER_ENV \
+        onboard -D 0 >/var/log/meow-mindustry-onboard.log 2>&1 &
+    ONBOARD_PID=$!
+    # Start visible, then collapse to the palette so normal gameplay is not
+    # obstructed.  The palette remains a touch target to show it again.
+    j=0
+    while [ "$j" -lt 30 ]; do
+        if /usr/bin/setpriv --reuid=radxa --regid=radxa --init-groups env $USER_ENV \
+            gdbus call --session --dest org.onboard.Onboard \
+            --object-path /org/onboard/Onboard/Keyboard \
+            --method org.onboard.Onboard.Keyboard.Hide >/dev/null 2>&1; then
+            break
+        fi
+        j=$((j + 1)); sleep 0.1
+    done
+    # Mindustry raises its own window when it starts.  Raise the palette once
+    # more after Java has mapped the game window so the touch target remains
+    # visible even without a desktop window manager.
+    /usr/bin/setpriv --reuid=radxa --regid=radxa --init-groups env $USER_ENV \
+        sh -c 'i=0; while [ "$i" -lt 50 ] && ! xwininfo -root -tree 2>/dev/null | grep -q "Mindustry"; do i=$((i + 1)); sleep 0.2; done; gdbus call --session --dest org.onboard.Onboard --object-path /org/onboard/Onboard/Keyboard --method org.onboard.Onboard.Keyboard.Show >/dev/null 2>&1; sleep 0.2; gdbus call --session --dest org.onboard.Onboard --object-path /org/onboard/Onboard/Keyboard --method org.onboard.Onboard.Keyboard.Hide >/dev/null 2>&1' &
+    PALETTE_PID=$!
+fi
+
 # Debian image does not ship util-linux runuser; setpriv provides the same
 # privilege drop without requiring an interactive shell.
 set +e
 /usr/bin/setpriv --reuid=radxa --regid=radxa --init-groups env \
-    DISPLAY=:0 SDL_VIDEODRIVER=x11 SDL_TOUCH_MOUSE_EVENTS=1 HOME=/home/radxa \
+    DISPLAY=:0 SDL_VIDEODRIVER=x11 SDL_TOUCH_MOUSE_EVENTS=1 \
+    XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
+    XMODIFIERS=@im=fcitx GTK_IM_MODULE=fcitx QT_IM_MODULE=fcitx HOME=/home/radxa \
     /usr/lib/jvm/java-17-openjdk-arm64/bin/java -Xms128m -Xmx512m -jar "$JAR" \
     -gl 2.1 -compatibilityGl -width 1280 -height 800 -maximized false -testMobile "$@"
 GAME_STATUS=$?
