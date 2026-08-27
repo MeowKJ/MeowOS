@@ -5,6 +5,10 @@ After=systemd-user-sessions.service
 
 [Service]
 Type=simple
+# Stop the DRM/EGLFS desktop before taking DRM master for the X11 game.
+# Conflicts alone is not sufficient when the desktop was started manually or
+# by a separate transaction; make the hand-off explicit and deterministic.
+ExecStartPre=/bin/systemctl stop meow-os.service
 ExecStart=/opt/mindustry/meow-mindustry-launch.sh
 ExecStopPost=-/bin/systemctl start meow-os.service
 Restart=no
