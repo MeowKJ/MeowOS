@@ -50,6 +50,11 @@ and releases the slot on a clean stop or failure. A future systemd/Wayland
 adapter can perform the actual process and surface hand-off without changing
 this policy code.
 
+The Qt shell follows the same rule: application views are created on demand,
+never prewarmed invisibly, and are destroyed when popped from the foreground
+stack. This prevents hidden QML timers and signal connections from becoming
+accidental background applications.
+
 ```text
 Stopped → Starting → Running → Stopping → Stopped
                          └──────────────→ Failed
