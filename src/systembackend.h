@@ -109,6 +109,8 @@ class SystemBackend final : public QObject
     Q_PROPERTY(QString memoryTotal READ memoryTotal NOTIFY performanceChanged)
     Q_PROPERTY(QVariantList performanceHistory READ performanceHistory NOTIFY performanceChanged)
     Q_PROPERTY(int displayRotation READ displayRotation CONSTANT)
+    Q_PROPERTY(int schedulerPendingTasks READ schedulerPendingTasks NOTIFY schedulerChanged)
+    Q_PROPERTY(int schedulerRunningTasks READ schedulerRunningTasks NOTIFY schedulerChanged)
 
 public:
     explicit SystemBackend(QObject *parent = nullptr);
@@ -197,6 +199,8 @@ public:
     QString memoryTotal() const;
     QVariantList performanceHistory() const;
     int displayRotation() const;
+    int schedulerPendingTasks() const;
+    int schedulerRunningTasks() const;
     bool isScreenSleeping() const;
     int sleepTimeoutSeconds() const;
     int sleepTimeoutIndex() const;
@@ -258,6 +262,7 @@ signals:
     void keepScreenOnAppsChanged();
     void wakeLockActiveChanged();
     void performanceChanged();
+    void schedulerChanged();
     void inputActivity();
     void operationMessage(const QString &message, bool success);
 

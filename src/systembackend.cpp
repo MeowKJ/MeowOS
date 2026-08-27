@@ -1017,6 +1017,7 @@ SystemBackend::SystemBackend(QObject *parent)
         emit operationMessage(requested ? QStringLiteral("像素工厂正在启动…")
                                         : QStringLiteral("像素工厂启动失败，请检查游戏服务与授权"),
                               requested);
+        emit schedulerChanged();
     });
     refresh();
     QTimer::singleShot(250, this, &SystemBackend::refreshPerformance);
@@ -1116,6 +1117,16 @@ int SystemBackend::displayRotation() const
     bool ok = false;
     const int value = qEnvironmentVariableIntValue("MEOW_UI_ROTATION", &ok);
     return ok ? value : -90;
+}
+
+int SystemBackend::schedulerPendingTasks() const
+{
+    return static_cast<int>(m_runtimeScheduler.pendingTasks());
+}
+
+int SystemBackend::schedulerRunningTasks() const
+{
+    return static_cast<int>(m_runtimeScheduler.runningTasks());
 }
 
 void SystemBackend::refresh()
@@ -1669,6 +1680,7 @@ void SystemBackend::launchMindustry()
     });
     m_mindustryLaunchPollTimer.start();
     emit operationMessage(QStringLiteral("像素工厂启动请求已提交…"), true);
+    emit schedulerChanged();
 }
 
 void SystemBackend::setDisplayBrightness(int percent)
