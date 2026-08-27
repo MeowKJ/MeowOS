@@ -13,12 +13,42 @@
 #include <utility>
 #include <vector>
 
+namespace {
+class MockDisplay final : public meow::IDisplayHal {
+public:
+    explicit MockDisplay(meow::DisplayGeometry geometry) : geometry_(geometry) {}
+    meow::DisplayGeometry geometry() const override { return geometry_; }
+    bool setBrightnessPercent(int) override { return true; }
+private:
+    meow::DisplayGeometry geometry_;
+};
+
+class MockInput final : public meow::IInputHal {
+public:
+    bool setDisplayGeometry(const meow::DisplayGeometry &geometry) override
+    {
+        geometry_ = geometry;
+        return geometry.logicalWidth > 0 && geometry.logicalHeight > 0;
+    }
+    bool start() override { return geometry_.logicalWidth > 0; }
+    void stop() override {}
+    std::string deviceName() const override { return "mock-touch"; }
+private:
+    meow::DisplayGeometry geometry_;
+};
+} // namespace
+
 int main()
 {
     const meow::DisplayGeometry geometry = meow::makeLogicalGeometry(800, 1280, 90);
     assert(geometry.logicalWidth == 1280 && geometry.logicalHeight == 800);
     const meow::TouchPoint topLeft = meow::transformTouchPoint({0, 0}, 800, 1280, 90);
     assert(topLeft.x == 1279 && topLeft.y == 0);
+    MockDisplay display(geometry);
+    MockInput input;
+    assert(!input.start());
+    assert(input.setDisplayGeometry(display.geometry()));
+    assert(input.start());
 
     meow::AppSession session("mindustry");
     assert(session.requestStart());
