@@ -19,7 +19,9 @@
 #include <QtMath>
 #include <cstdio>
 #include <chrono>
+#include <cstdint>
 #include <stdexcept>
+#include <utility>
 
 #ifdef Q_OS_LINUX
 #include <fcntl.h>
@@ -1358,6 +1360,14 @@ void SystemBackend::refreshPerformance()
     m_memoryUsedBytes = memUsed;
     m_memoryAvailableBytes = memAvailable;
     m_memoryTotalBytes = memTotal;
+    meow::RuntimeSnapshot runtimeSnapshot;
+    runtimeSnapshot.sequence = ++m_runtimeSequence;
+    runtimeSnapshot.cpuPercent = m_cpuTotal;
+    runtimeSnapshot.memoryPercent = m_memoryPercent;
+    runtimeSnapshot.gpuPercent = m_gpuUsage;
+    runtimeSnapshot.displayRotation = displayRotation();
+    runtimeSnapshot.foregroundApp = m_activeScope;
+    m_runtimeSnapshotStore.publish(std::move(runtimeSnapshot));
     emit performanceChanged();
 }
 

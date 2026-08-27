@@ -14,6 +14,7 @@ grep -q 'if (appId.empty() || active_)' src/runtime/app_session_supervisor.cpp
 grep -q 'beginStart' src/runtime/app_session_supervisor.h
 test -f src/runtime/runtime_snapshot.cpp
 grep -q 'atomic_load_explicit' src/runtime/runtime_snapshot.cpp
+grep -q 'm_runtimeSnapshotStore.publish' src/systembackend.cpp
 test -f src/hal/hal_interfaces.cpp
 grep -q 'transformTouchPoint' src/hal/hal_interfaces.cpp
 grep -q 'class IAppProcessHal' src/hal/hal_interfaces.h
