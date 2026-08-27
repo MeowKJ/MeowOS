@@ -1,0 +1,13 @@
+[Unit]
+Description=Mindustry game session for Meow OS
+Conflicts=meow-os.service
+After=systemd-user-sessions.service
+
+[Service]
+Type=simple
+ExecStart=/opt/mindustry/meow-mindustry-launch.sh
+ExecStopPost=-/bin/systemctl start meow-os.service
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

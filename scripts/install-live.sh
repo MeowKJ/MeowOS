@@ -78,6 +78,7 @@ install -m 0644 assets/boot/meow-boot-landscape.png /opt/meow-os/share/early-spl
 install -m 0644 assets/boot/meow-boot-portrait.png /opt/meow-os/share/early-splash/assets/meow-boot-portrait.png
 install -m 0755 systemd/vt_mode.py /opt/meow-os/vt_mode.py
 install -m 0644 systemd/meow-os.service /etc/systemd/system/meow-os.service
+install -m 0644 systemd/meow-mindustry.service /etc/systemd/system/meow-mindustry.service
 install -m 0644 systemd/meow-charge-enable.service /etc/systemd/system/meow-charge-enable.service
 install -m 0644 systemd/meow-nvme-mount@.service /etc/systemd/system/meow-nvme-mount@.service
 install -m 0644 config/display.conf /etc/meow-os/display.conf

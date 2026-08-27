@@ -1625,7 +1625,9 @@ void SystemBackend::playVolumeFeedback()
 
 void SystemBackend::launchMindustry()
 {
-    const bool started = QProcess::startDetached(QStringLiteral("/opt/mindustry/meow-mindustry-launch.sh"));
+    const bool started = QProcess::startDetached(QStringLiteral("sudo"),
+                                                  {QStringLiteral("-n"), QStringLiteral("systemctl"),
+                                                   QStringLiteral("start"), QStringLiteral("meow-mindustry.service")});
     emit operationMessage(started ? QStringLiteral("像素工厂已启动")
                                   : QStringLiteral("像素工厂启动失败，请检查游戏文件"), started);
 }
