@@ -51,6 +51,17 @@ cd "$ROOT_DIR"
 if [ "${MEOW_QUALITY_STRICT:-0}" = "1" ]; then
     ./scripts/quality-gate.sh --strict
 fi
+
+# Mindustry uses a temporary Xorg session.  XRandR performs the panel rotation
+# and the libinput Xorg driver exposes the physical touchscreen to XInput.
+if ! command -v xrandr >/dev/null 2>&1 \
+    || ! command -v xinput >/dev/null 2>&1 \
+    || ! find /usr/lib/xorg/modules/input -name libinput_drv.so -print -quit 2>/dev/null | grep -q .; then
+    DEBIAN_FRONTEND=noninteractive apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        x11-xserver-utils xinput xserver-xorg-input-libinput
+fi
+
 qmake meow-os.pro -o Makefile
 make -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)"
 

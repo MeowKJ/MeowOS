@@ -5,7 +5,7 @@ ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT_DIR"
 
 printf '%s\n' '[1/5] shell syntax'
-sh -n scripts/install-live.sh scripts/mount-nvme-data scripts/meow-display-launcher scripts/meow-wait-display scripts/configure-boot-branding scripts/install-early-splash
+sh -n scripts/install-live.sh scripts/mount-nvme-data scripts/meow-display-launcher scripts/meow-wait-display scripts/configure-boot-branding scripts/install-early-splash scripts/meow-mindustry-launch.sh
 
 printf '%s\n' '[2/5] required deployment files'
 for file in scripts/mount-nvme-data systemd/meow-nvme-mount@.service udev/90-meow-nvme-data.rules; do
@@ -13,6 +13,11 @@ for file in scripts/mount-nvme-data systemd/meow-nvme-mount@.service udev/90-meo
 done
 test -f config/hardware-profiles/a5e.env
 test -f config/hardware-profiles/a733-generic.env
+test -f systemd/meow-mindustry.service
+grep -q 'x11-xserver-utils xinput xserver-xorg-input-libinput' scripts/install-live.sh
+grep -q 'xrandr --output "$OUTPUT" --rotate left' scripts/meow-mindustry-launch.sh
+grep -q 'Coordinate Transformation Matrix' scripts/meow-mindustry-launch.sh
+grep -q 'TERMINATING=1' scripts/meow-mindustry-launch.sh
 
 grep -q 'MEOW_QPA_PLATFORM=eglfs' config/display.conf
 VERSION_VALUE=$(cat VERSION)
