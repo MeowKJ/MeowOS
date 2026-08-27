@@ -1,12 +1,14 @@
 #include "runtime/app_session.h"
 #include "runtime/task_scheduler.h"
 #include "runtime/app_session_supervisor.h"
+#include "runtime/runtime_snapshot.h"
 #include "hal/hal_interfaces.h"
 
 #include <atomic>
 #include <cassert>
 #include <thread>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 int main()
@@ -61,5 +63,27 @@ int main()
     release.set_value();
     first.wait();
     bounded.shutdown();
+
+    meow::RuntimeSnapshotStore snapshots;
+    std::atomic<bool> publishing(true);
+    std::thread writer([&snapshots, &publishing] {
+        for (std::uint64_t i = 1; i <= 1000; ++i) {
+            meow::RuntimeSnapshot snapshot;
+            snapshot.sequence = i;
+            snapshot.cpuPercent = static_cast<int>(i % 101);
+            snapshot.foregroundApp = "mindustry";
+            snapshots.publish(std::move(snapshot));
+        }
+        publishing.store(false);
+    });
+    std::uint64_t lastSequence = 0;
+    while (publishing.load() || snapshots.read()->sequence < 1000) {
+        const std::shared_ptr<const meow::RuntimeSnapshot> current = snapshots.read();
+        assert(current->sequence >= lastSequence);
+        assert(current->cpuPercent < 0 || current->cpuPercent <= 100);
+        lastSequence = current->sequence;
+    }
+    writer.join();
+    assert(snapshots.read()->sequence == 1000);
     return 0;
 }

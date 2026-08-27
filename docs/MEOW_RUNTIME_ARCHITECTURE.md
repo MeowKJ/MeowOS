@@ -32,6 +32,11 @@ Workers drain higher-priority work first and preserve FIFO order within a
 priority. The UI thread never waits on hardware or process I/O. Results are
 returned as futures/events and published as immutable snapshots.
 
+`RuntimeSnapshotStore` is the first concrete state boundary: workers publish a
+complete immutable metrics snapshot, while QML-facing code obtains an atomic
+read-only pointer. No UI binding can observe half-written CPU/RAM/GPU values or
+retain a mutable worker-owned container.
+
 The queue has a configurable pending-task limit (1024 by default). Producers
 receive an explicit `TaskScheduler queue is full` failure instead of silently
 creating unbounded memory pressure; callers can then coalesce telemetry or

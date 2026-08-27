@@ -117,6 +117,7 @@ if [ "$(uname -s)" = Linux ]; then
         -Isrc tools/test-runtime.cpp src/runtime/task_scheduler.cpp \
         src/hal/hal_interfaces.cpp \
         src/runtime/app_session.cpp src/runtime/app_session_supervisor.cpp \
+        src/runtime/runtime_snapshot.cpp \
         -o /tmp/meow-runtime-test
     /tmp/meow-runtime-test
 fi
