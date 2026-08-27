@@ -27,7 +27,28 @@ pkill -TERM -x Xorg 2>/dev/null || true
 sleep 0.5
 pkill -KILL -x Xorg 2>/dev/null || true
 rm -f /tmp/.X11-unix/X0 /tmp/.X0-lock
-/usr/bin/Xorg :0 vt1 -keeptty -nolisten tcp -noreset >/var/log/meow-mindustry-xorg.log 2>&1 &
+# Use a session-local Xorg configuration so the portrait panel is presented as
+# landscape to SDL.  Do not modify /etc/X11: Meow OS uses its own EGLFS path.
+XORG_CONF=/tmp/meow-mindustry-xorg.conf
+cat >"$XORG_CONF" <<'EOF'
+Section "Device"
+    Identifier "Meow Mindustry GPU"
+    Driver "modesetting"
+    Option "kmsdev" "/dev/dri/card0"
+    Option "AccelMethod" "glamor"
+    Option "DRI" "2"
+EndSection
+Section "Monitor"
+    Identifier "Meow Panel"
+    Option "Rotate" "left"
+EndSection
+Section "Screen"
+    Identifier "Meow Screen"
+    Device "Meow Mindustry GPU"
+    Monitor "Meow Panel"
+EndSection
+EOF
+/usr/bin/Xorg :0 -config "$XORG_CONF" vt1 -keeptty -nolisten tcp -noreset >/var/log/meow-mindustry-xorg.log 2>&1 &
 XORG_PID=$!
 i=0
 while [ ! -S /tmp/.X11-unix/X0 ]; do
@@ -35,6 +56,15 @@ while [ ! -S /tmp/.X11-unix/X0 ]; do
     i=$((i + 1)); [ "$i" -lt 50 ] || { echo "Xorg startup timeout" >&2; exit 1; }
     sleep 0.1
 done
+
+# The attached panel is physically portrait (800x1280), while the game UI is
+# designed for the Meow OS landscape workspace.  Rotate only this temporary
+# Xorg session; the normal Meow OS EGLFS configuration is left untouched.
+# The modesetting driver exposes the panel as DSI-1 and applies the rotation
+# before SDL queries the desktop size, yielding a 1280x800 game surface.
+if command -v xrandr >/dev/null 2>&1; then
+    xrandr --display :0 --output DSI-1 --rotate left >/var/log/meow-mindustry-xrandr.log 2>&1 || true
+fi
 
 # Debian image does not ship util-linux runuser; setpriv provides the same
 # privilege drop without requiring an interactive shell.
