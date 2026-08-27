@@ -62,6 +62,18 @@ if ! command -v xrandr >/dev/null 2>&1 \
         x11-xserver-utils xinput xserver-xorg-input-libinput
 fi
 
+# Mindustry runs in its own X11 session, so the Qt shell's input controls are
+# not available while the game is focused.  Install a touch keyboard and a
+# Chinese IME for text fields such as server names and chat.
+if ! command -v onboard >/dev/null 2>&1 \
+    || ! command -v fcitx5 >/dev/null 2>&1 \
+    || ! dpkg-query -W -f '${Status}' fcitx5-pinyin 2>/dev/null \
+        | grep -q '^install ok installed$'; then
+    DEBIAN_FRONTEND=noninteractive apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        onboard fcitx5 fcitx5-pinyin fcitx5-frontend-gtk3 fcitx5-frontend-qt5
+fi
+
 qmake meow-os.pro -o Makefile
 make -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)"
 
@@ -101,6 +113,20 @@ install -m 0644 polkit/49-meow-os-network.pkla /etc/polkit-1/localauthority/50-l
 rm -f /etc/polkit-1/rules.d/49-meow-os-mindustry.rules
 install -m 0644 udev/99-meow-os-input.rules /etc/udev/rules.d/99-meow-os-input.rules
 install -m 0644 udev/90-meow-nvme-data.rules /etc/udev/rules.d/90-meow-nvme-data.rules
+
+# Keep the user's Fcitx profile intact while ensuring the bundled pinyin
+# engine is available as a selectable input method in the game session.
+install -d -o radxa -g radxa -m 0700 /home/radxa/.config/fcitx5
+if [ ! -f /home/radxa/.config/fcitx5/profile ]; then
+    printf '%s\n' '[Groups/0]' 'Name=Default' 'Default Layout=us' 'DefaultIM=keyboard-us' \
+        '' '[Groups/0/Items/0]' 'Name=keyboard-us' 'Layout=' \
+        '' '[Groups/0/Items/1]' 'Name=pinyin' 'Layout=' '' '[GroupOrder]' '0=Default' \
+        > /home/radxa/.config/fcitx5/profile
+elif ! grep -q '^Name=pinyin$' /home/radxa/.config/fcitx5/profile; then
+    printf '%s\n' '' '[Groups/0/Items/1]' 'Name=pinyin' 'Layout=' \
+        >> /home/radxa/.config/fcitx5/profile
+fi
+chown radxa:radxa /home/radxa/.config/fcitx5/profile
 printf 'NAME="Meow OS"\nVERSION="%s"\nID=meow-os\nPRETTY_NAME="Meow OS %s"\n' "$VERSION" "$VERSION" > /etc/meow-os-release
 printf '%s\n' "$SOURCE_HASH" > /etc/meow-os/build.sha256
 

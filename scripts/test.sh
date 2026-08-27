@@ -28,6 +28,16 @@ grep -q 'TERMINATING=1' scripts/meow-mindustry-launch.sh
 grep -q -- '-width 1280 -height 800 -maximized false -testMobile' scripts/meow-mindustry-launch.sh
 grep -q 'SDL_TOUCH_MOUSE_EVENTS=1' scripts/meow-mindustry-launch.sh
 ! grep -q 'SDL_MOUSE_TOUCH_EVENTS=1' scripts/meow-mindustry-launch.sh
+grep -q 'command -v onboard' scripts/install-live.sh
+grep -q 'command -v fcitx5' scripts/install-live.sh
+grep -q 'dpkg-query -W' scripts/install-live.sh
+grep -q 'onboard -D 0' scripts/meow-mindustry-launch.sh
+grep -q 'org.onboard.Onboard.Keyboard.Hide' scripts/meow-mindustry-launch.sh
+grep -q 'org.onboard.Onboard.Keyboard.Show' scripts/meow-mindustry-launch.sh
+grep -q 'xwininfo -root -tree' scripts/meow-mindustry-launch.sh
+grep -q 'XMODIFIERS=@im=fcitx' scripts/meow-mindustry-launch.sh
+grep -q 'HOME=/home/radxa' scripts/meow-mindustry-launch.sh
+grep -q 'Name=pinyin' scripts/install-live.sh
 grep -q 'preventStealing: true' qml/components/IosSwitch.qml
 ! grep -q 'Behavior on color' qml/components/IosSwitch.qml
 grep -q 'switchRoot.toggled(!switchRoot.checked)' qml/components/IosSwitch.qml
