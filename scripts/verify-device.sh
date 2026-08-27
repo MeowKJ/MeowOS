@@ -30,5 +30,25 @@ else
     printf '%s\n' 'qt_build=skipped (qmake unavailable)'
 fi
 
+if [ "${1:-}" = "--live" ]; then
+    printf '%s\n' '[live] checking current desktop/session state'
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl is-active --quiet meow-os.service
+        printf '%s\n' 'meow_os_service=active'
+        if systemctl is-active --quiet meow-mindustry.service; then
+            printf '%s\n' 'foreground_app=mindustry'
+        else
+            printf '%s\n' 'foreground_app=shell'
+        fi
+    else
+        printf '%s\n' 'systemd=unavailable (state check skipped)'
+    fi
+    if command -v xrandr >/dev/null 2>&1; then
+        xrandr --query | awk '$2 == "connected" { print "display_output=" $1; found=1 } END { exit(found ? 0 : 1) }'
+    else
+        printf '%s\n' 'display_query=unavailable (xrandr skipped)'
+    fi
+fi
+
 printf '%s\n' 'runtime_tests=passed'
 printf '%s\n' 'device_verification=passed'

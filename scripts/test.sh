@@ -116,6 +116,7 @@ test -f docs/MEOW_RUNTIME_ARCHITECTURE.md
 test -f docs/DEVICE_VERIFICATION_MATRIX.md
 test -x scripts/build-linux.sh
 test -x scripts/verify-device.sh
+grep -q -- '--live' scripts/verify-device.sh
 test -x scripts/build-runtime.sh
 test -f cmake/runtime-tests/CMakeLists.txt
 test -f .github/workflows/quality.yml
