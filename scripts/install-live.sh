@@ -59,6 +59,12 @@ install -m 0755 meow-os /opt/meow-os/meow-os
 install -m 0755 scripts/mount-nvme-data /opt/meow-os/bin/mount-nvme-data
 install -m 0644 assets/sounds/volume-meow.wav /opt/meow-os/assets/sounds/volume-meow.wav
 install -m 0755 scripts/meow-display-launcher /opt/meow-os/bin/meow-display-launcher
+install -d -m 0755 /opt/mindustry/gl4es/lib
+install -m 0755 scripts/meow-mindustry-launch.sh /opt/mindustry/meow-mindustry-launch.sh
+if [ -f /tmp/gl4es/lib/libGL.so.1 ]; then
+    install -m 0755 /tmp/gl4es/lib/libGL.so.1 /opt/mindustry/gl4es/lib/libGL.so.1
+    ln -sf libGL.so.1 /opt/mindustry/gl4es/lib/libGL.so
+fi
 install -m 0755 scripts/meow-backlight-permissions /opt/meow-os/bin/meow-backlight-permissions
 install -m 0755 scripts/meow-wait-display /opt/meow-os/bin/meow-wait-display
 install -m 0755 scripts/configure-boot-branding /opt/meow-os/bin/configure-boot-branding
@@ -90,7 +96,6 @@ udevadm control --reload-rules
 systemctl enable meow-os.service
 systemctl enable meow-charge-enable.service
 /opt/meow-os/bin/configure-boot-branding
-/opt/meow-os/bin/install-early-splash
 for partition in /dev/nvme*n*p[0-9]; do
     [ -b "$partition" ] || continue
     if command -v mountpoint >/dev/null 2>&1 && mountpoint -q /data; then
