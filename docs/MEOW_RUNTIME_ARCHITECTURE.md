@@ -21,6 +21,10 @@ specific SoC. This includes the application process adapter: systemd is only
 one possible implementation of `IAppProcessHal`. A Rockchip adapter can
 therefore replace the Allwinner adapter without changing policy or UI code.
 
+The standalone `cmake/runtime-tests` project builds these contracts without
+Qt. `scripts/build-runtime.sh` is suitable for cross-compilers and CI, while
+the qmake project remains the full desktop build.
+
 ## Scheduling model
 
 `meow::TaskScheduler` is a bounded-priority executor:
