@@ -14,12 +14,19 @@ done
 test -f config/hardware-profiles/a5e.env
 test -f config/hardware-profiles/a733-generic.env
 test -f systemd/meow-mindustry.service
+test -f config/meow-mindustry-sudoers
+grep -q 'meow-mindustry-sudoers' scripts/install-live.sh
 grep -q 'x11-xserver-utils xinput xserver-xorg-input-libinput' scripts/install-live.sh
 grep -q 'xrandr --output "$OUTPUT" --rotate left' scripts/meow-mindustry-launch.sh
 grep -q 'Coordinate Transformation Matrix' scripts/meow-mindustry-launch.sh
 grep -q 'TERMINATING=1' scripts/meow-mindustry-launch.sh
 grep -q -- '-width 1280 -height 800 -maximized false -testMobile' scripts/meow-mindustry-launch.sh
 grep -q 'SDL_TOUCH_MOUSE_EVENTS=1' scripts/meow-mindustry-launch.sh
+grep -q 'model.appId === "mindustry"' qml/Main.qml
+grep -q 'window.launchMindustryDirect()' qml/Main.qml
+grep -q 'startInMindustry' qml/Main.qml
+! grep -q 'mindustryComponent' qml/Main.qml
+! grep -q 'MindustryApp.qml' qml.qrc
 
 grep -q 'MEOW_QPA_PLATFORM=eglfs' config/display.conf
 VERSION_VALUE=$(cat VERSION)
