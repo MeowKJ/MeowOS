@@ -39,7 +39,11 @@ cannot consume shell threads or leave background processes behind.
 
 ## One-foreground-app invariant
 
-`AppSession` is the first policy contract for this invariant:
+`AppSession` and `AppSessionSupervisor` are policy contracts for this invariant.
+The supervisor owns at most one session, rejects a second foreground launch,
+and releases the slot on a clean stop or failure. A future systemd/Wayland
+adapter can perform the actual process and surface hand-off without changing
+this policy code.
 
 ```text
 Stopped → Starting → Running → Stopping → Stopped

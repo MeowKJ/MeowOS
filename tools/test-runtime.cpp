@@ -1,5 +1,6 @@
 #include "runtime/app_session.h"
 #include "runtime/task_scheduler.h"
+#include "runtime/app_session_supervisor.h"
 #include "hal/hal_interfaces.h"
 
 #include <atomic>
@@ -19,6 +20,15 @@ int main()
     assert(session.markRunning());
     assert(session.requestStop());
     assert(session.markStopped());
+
+    meow::AppSessionSupervisor supervisor;
+    assert(supervisor.start("mindustry"));
+    assert(supervisor.activeAppId() == "mindustry");
+    assert(!supervisor.start("another-app"));
+    assert(supervisor.stop());
+    assert(!supervisor.hasActiveSession());
+    assert(supervisor.start("settings"));
+    assert(supervisor.fail());
 
     meow::TaskScheduler scheduler(4);
     std::atomic<int> completed(0);
