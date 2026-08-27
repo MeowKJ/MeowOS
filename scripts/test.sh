@@ -113,6 +113,7 @@ test -f src/runtime/task_scheduler.cpp
 test -f src/runtime/app_session.cpp
 test -f src/hal/hal_interfaces.h
 test -f docs/MEOW_RUNTIME_ARCHITECTURE.md
+test -f docs/DEVICE_VERIFICATION_MATRIX.md
 test -x scripts/build-linux.sh
 test -x scripts/verify-device.sh
 if [ "$(uname -s)" = Linux ]; then
