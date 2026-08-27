@@ -44,7 +44,12 @@ if [ "${1:-}" = "--live" ]; then
         printf '%s\n' 'systemd=unavailable (state check skipped)'
     fi
     if command -v xrandr >/dev/null 2>&1; then
-        xrandr --query | awk '$2 == "connected" { print "display_output=" $1; found=1 } END { exit(found ? 0 : 1) }'
+        if xrandr --query >"$TMP_DIR/xrandr.txt" 2>/dev/null; then
+            awk '$2 == "connected" { print "display_output=" $1; found=1 } END { exit(found ? 0 : 1) }' "$TMP_DIR/xrandr.txt" \
+                || printf '%s\n' 'display_output=none detected'
+        else
+            printf '%s\n' 'display_query=unavailable (no active display session)'
+        fi
     else
         printf '%s\n' 'display_query=unavailable (xrandr skipped)'
     fi
