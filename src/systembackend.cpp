@@ -875,7 +875,7 @@ QString availableDestination(const QString &directory, const QString &name)
 
 SystemBackend::SystemBackend(QObject *parent)
     : QObject(parent), m_statusWatcher(this), m_wifiScanWatcher(this), m_wifiOperationWatcher(this),
-      m_ethernetOperationWatcher(this)
+      m_ethernetOperationWatcher(this), m_mindustryLaunchWatcher(this)
 {
     m_hardwareCapabilities = detectHardwareCapabilities(&m_boardProfile);
     QSettings calibration(QStringLiteral("Meow OS"), QStringLiteral("battery"));
@@ -995,6 +995,12 @@ SystemBackend::SystemBackend(QObject *parent)
         emit fileOperationChanged();
         emit operationMessage(result.value(QStringLiteral("message")).toString(), ok);
         if (!m_filePath.isEmpty()) browseDirectory(m_filePath);
+    });
+    connect(&m_mindustryLaunchWatcher, &QFutureWatcher<int>::finished, this, [this]() {
+        const bool requested = m_mindustryLaunchWatcher.result() == 0;
+        emit operationMessage(requested ? QStringLiteral("像素工厂正在启动…")
+                                        : QStringLiteral("像素工厂启动失败，请检查游戏服务与授权"),
+                              requested);
     });
     refresh();
     QTimer::singleShot(250, this, &SystemBackend::refreshPerformance);
@@ -1625,13 +1631,16 @@ void SystemBackend::playVolumeFeedback()
 
 void SystemBackend::launchMindustry()
 {
-    const int exitCode = QProcess::execute(QStringLiteral("sudo"),
-                                           {QStringLiteral("-n"), QStringLiteral("/bin/systemctl"),
-                                            QStringLiteral("--no-block"), QStringLiteral("start"),
-                                            QStringLiteral("meow-mindustry.service")});
-    const bool requested = exitCode == 0;
-    emit operationMessage(requested ? QStringLiteral("像素工厂正在启动…")
-                                    : QStringLiteral("像素工厂启动失败，请检查游戏服务与授权"), requested);
+    if (m_mindustryLaunchWatcher.isRunning()) return;
+    // systemctl can block while policykit/sudo resolves credentials. Keep it
+    // off the Qt GUI thread so a tap always receives immediate feedback.
+    m_mindustryLaunchWatcher.setFuture(QtConcurrent::run([]() {
+        return QProcess::execute(QStringLiteral("sudo"),
+                                 {QStringLiteral("-n"), QStringLiteral("/bin/systemctl"),
+                                  QStringLiteral("--no-block"), QStringLiteral("start"),
+                                  QStringLiteral("meow-mindustry.service")});
+    }));
+    emit operationMessage(QStringLiteral("像素工厂启动请求已提交…"), true);
 }
 
 void SystemBackend::setDisplayBrightness(int percent)

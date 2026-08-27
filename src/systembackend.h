@@ -356,6 +356,7 @@ private:
     QFutureWatcher<QVariantMap> m_directoryWatcher;
     QFutureWatcher<QVariantMap> m_previewWatcher;
     QFutureWatcher<QVariantMap> m_fileOperationWatcher;
+    QFutureWatcher<int> m_mindustryLaunchWatcher;
     int m_pendingVolumePercent = 65;
     QTimer m_volumeSetTimer;
     QProcess m_volumeSetProcess;

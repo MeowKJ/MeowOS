@@ -1,0 +1,70 @@
+# MeowOS Runtime Architecture (experimental)
+
+This document defines the low-coupling direction for the Linux runtime. It is
+an additive design: the current Qt/EGLFS shell remains the production fallback
+while the new runtime pieces are introduced behind stable contracts.
+
+## Boundaries
+
+```text
+meow-shell (Qt Quick)
+        │ asynchronous IPC / adapter
+meow-core (policy and immutable state snapshots)
+        ├── HAL adapters (display, input, power, audio, network, storage)
+        └── meow-sessiond (one foreground app session)
+                  ├── display backend (EGLFS / X11 / Wayland)
+                  └── input + IME backend (evdev / XInput / Fcitx5)
+```
+
+The HAL contracts are pure C++ and do not include Qt, QML, systemd, or a
+specific SoC. A Rockchip adapter can therefore replace the Allwinner adapter
+without changing policy or UI code.
+
+## Scheduling model
+
+`meow::TaskScheduler` is a bounded-priority executor:
+
+- `Critical`: input and display hand-off work;
+- `Interactive`: application state and network actions;
+- `Background`: telemetry, storage indexing, and history maintenance.
+
+Workers drain higher-priority work first and preserve FIFO order within a
+priority. The UI thread never waits on hardware or process I/O. Results are
+returned as futures/events and published as immutable snapshots.
+
+There is no thread-per-device rule. The worker count is bounded by available
+cores, and shutdown drains queued work before joining workers. Long-running
+application processes remain isolated in their own systemd session so they
+cannot consume shell threads or leave background processes behind.
+
+## One-foreground-app invariant
+
+`AppSession` is the first policy contract for this invariant:
+
+```text
+Stopped → Starting → Running → Stopping → Stopped
+                         └──────────────→ Failed
+```
+
+Only the session supervisor may transition this state. The shell observes
+state changes; it does not launch or kill application processes directly.
+
+## Display orientation and input coordinates
+
+The HAL `DisplayGeometry` contract carries the panel's physical orientation
+and the resulting logical size. A DRM/device-tree adapter may declare a fixed
+panel mount (for example, native 800×1280 mounted as landscape), while the
+display backend exposes 1280×800 to applications. The input adapter applies
+the same quarter-turn to touch coordinates. QML and games therefore never
+rotate independently, avoiding double rotation and keeping an RK adapter
+binary-compatible with the Allwinner policy layer.
+
+## Migration order
+
+1. Compile and test the pure runtime/HAL contracts (current change).
+2. Move blocking `SystemBackend` operations behind core workers while keeping
+   the existing QML adapter.
+3. Move Mindustry, Onboard, and Fcitx5 into `meow-sessiond`.
+4. Add a Wayland backend beside the current EGLFS/X11 backend.
+5. Make the Wayland path default only after real-device touch, text input,
+   fullscreen, and recovery tests pass.

@@ -1,0 +1,52 @@
+#pragma once
+
+#include <cstdint>
+#include <string>
+
+namespace meow {
+
+struct DisplayGeometry {
+    std::uint32_t nativeWidth = 0;
+    std::uint32_t nativeHeight = 0;
+    std::uint32_t logicalWidth = 0;
+    std::uint32_t logicalHeight = 0;
+    int rotationDegrees = 0;
+};
+
+struct TouchPoint {
+    double x = 0.0;
+    double y = 0.0;
+};
+
+// Keep coordinate transforms in the HAL contract so every frontend (EGLFS,
+// X11, Wayland and future RK adapters) presents the same logical orientation.
+int normalizeRotationDegrees(int degrees);
+DisplayGeometry makeLogicalGeometry(std::uint32_t nativeWidth,
+                                    std::uint32_t nativeHeight,
+                                    int rotationDegrees);
+TouchPoint transformTouchPoint(TouchPoint point, std::uint32_t width,
+                               std::uint32_t height, int rotationDegrees);
+
+class IDisplayHal {
+public:
+    virtual ~IDisplayHal() = default;
+    virtual DisplayGeometry geometry() const = 0;
+    virtual bool setBrightnessPercent(int percent) = 0;
+};
+
+class IInputHal {
+public:
+    virtual ~IInputHal() = default;
+    virtual bool start() = 0;
+    virtual void stop() = 0;
+    virtual std::string deviceName() const = 0;
+};
+
+class IPowerHal {
+public:
+    virtual ~IPowerHal() = default;
+    virtual int batteryPercent() const = 0;
+    virtual bool externalPowerPresent() const = 0;
+};
+
+} // namespace meow

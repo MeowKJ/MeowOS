@@ -104,6 +104,20 @@ test -x plymouth/meow-os/zz-meow-plymouth
 test -f assets/boot/meow-boot-landscape.png
 test -f assets/boot/meow-boot-portrait.png
 
+printf '%s\n' '[2a/5] runtime kernel and HAL contract'
+test -f src/runtime/task_scheduler.cpp
+test -f src/runtime/app_session.cpp
+test -f src/hal/hal_interfaces.h
+test -f docs/MEOW_RUNTIME_ARCHITECTURE.md
+test -x scripts/build-linux.sh
+if [ "$(uname -s)" = Linux ]; then
+    c++ -std=c++11 -Wall -Wextra -Werror -pthread \
+        -Isrc tools/test-runtime.cpp src/runtime/task_scheduler.cpp \
+        src/hal/hal_interfaces.cpp \
+        src/runtime/app_session.cpp -o /tmp/meow-runtime-test
+    /tmp/meow-runtime-test
+fi
+
 if [ "$(uname -s)" = Linux ]; then
     "${CXX:-c++}" -std=c++11 -Wall -Wextra -Werror tools/sgm41511-registers.cpp -o /tmp/sgm41511-registers-test
 fi
@@ -113,9 +127,11 @@ grep -q 'meow-nvme-mount@' scripts/install-live.sh
 printf '%s\n' '[3/5] qmake and C++ build'
 QMAKE_BIN=$(command -v qmake || command -v qmake-qt5 || true)
 if [ -n "$QMAKE_BIN" ]; then
-    "$QMAKE_BIN" meow-os.pro -o Makefile
-    make -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)"
-    test -x meow-os
+    BUILD_TMP=$(mktemp -d "${TMPDIR:-/tmp}/meow-build.XXXXXX")
+    trap 'rm -rf "$BUILD_TMP"' EXIT
+    "$QMAKE_BIN" meow-os.pro -o "$BUILD_TMP/Makefile"
+    make -C "$BUILD_TMP" -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)"
+    test -x "$BUILD_TMP/meow-os"
 else
     printf '%s\n' 'qmake not installed locally; build is covered by the device deployment check.'
 fi
