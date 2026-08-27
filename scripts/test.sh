@@ -5,7 +5,7 @@ ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT_DIR"
 
 printf '%s\n' '[1/5] shell syntax'
-sh -n scripts/install-live.sh scripts/mount-nvme-data scripts/meow-display-launcher scripts/meow-wait-display scripts/configure-boot-branding scripts/install-early-splash scripts/meow-mindustry-launch.sh scripts/verify-device.sh
+sh -n scripts/install-live.sh scripts/mount-nvme-data scripts/meow-display-launcher scripts/meow-wait-display scripts/configure-boot-branding scripts/install-early-splash scripts/meow-mindustry-launch.sh scripts/verify-device.sh scripts/build-runtime.sh
 
 printf '%s\n' '[2/5] required deployment files'
 for file in scripts/mount-nvme-data systemd/meow-nvme-mount@.service udev/90-meow-nvme-data.rules; do
@@ -116,6 +116,8 @@ test -f docs/MEOW_RUNTIME_ARCHITECTURE.md
 test -f docs/DEVICE_VERIFICATION_MATRIX.md
 test -x scripts/build-linux.sh
 test -x scripts/verify-device.sh
+test -x scripts/build-runtime.sh
+test -f cmake/runtime-tests/CMakeLists.txt
 if [ "$(uname -s)" = Linux ]; then
     c++ -std=c++11 -Wall -Wextra -Werror -pthread \
         -Isrc tools/test-runtime.cpp src/runtime/task_scheduler.cpp \
