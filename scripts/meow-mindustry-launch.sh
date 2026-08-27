@@ -10,7 +10,12 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-rm -f /tmp/.X11-unix/X0
+# This appliance has no persistent desktop X server. Remove a stale process or
+# lock left by an interrupted game session before taking over VT1/DRM.
+pkill -TERM -x Xorg 2>/dev/null || true
+sleep 0.5
+pkill -KILL -x Xorg 2>/dev/null || true
+rm -f /tmp/.X11-unix/X0 /tmp/.X0-lock
 /usr/bin/Xorg :0 vt1 -keeptty -nolisten tcp -noreset >/var/log/meow-mindustry-xorg.log 2>&1 &
 XORG_PID=$!
 i=0
