@@ -88,8 +88,8 @@ int main()
     meow::TaskScheduler bounded(1, 1);
     std::promise<void> release;
     std::future<void> gate = release.get_future();
-    const std::future<void> first = bounded.submit(meow::TaskPriority::Background,
-                                                    [&gate] { gate.wait(); });
+    std::future<void> first = bounded.submit(meow::TaskPriority::Background,
+                                             [&gate] { gate.wait(); });
     bool rejected = false;
     try {
         bounded.submit(meow::TaskPriority::Background, [] {});
@@ -107,15 +107,15 @@ int main()
     std::future<void> priorityGate = priorityRelease.get_future();
     std::vector<int> order;
     std::mutex orderMutex;
-    const std::future<void> blocker = priorityScheduler.submit(meow::TaskPriority::Critical,
+    std::future<void> blocker = priorityScheduler.submit(meow::TaskPriority::Critical,
         [&priorityGate, &order, &orderMutex] {
             { std::lock_guard<std::mutex> lock(orderMutex); order.push_back(0); }
             priorityGate.wait();
         });
     while (priorityScheduler.runningTasks() == 0) std::this_thread::yield();
-    const std::future<void> low = priorityScheduler.submit(meow::TaskPriority::Background,
+    std::future<void> low = priorityScheduler.submit(meow::TaskPriority::Background,
         [&order, &orderMutex] { std::lock_guard<std::mutex> lock(orderMutex); order.push_back(1); });
-    const std::future<void> high = priorityScheduler.submit(meow::TaskPriority::Critical,
+    std::future<void> high = priorityScheduler.submit(meow::TaskPriority::Critical,
         [&order, &orderMutex] { std::lock_guard<std::mutex> lock(orderMutex); order.push_back(2); });
     priorityRelease.set_value();
     blocker.get();
