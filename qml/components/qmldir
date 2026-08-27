@@ -21,3 +21,4 @@ PerformanceRamGpuCard 1.0 PerformanceRamGpuCard.qml
 PerformanceCoreMatrix 1.0 PerformanceCoreMatrix.qml
 PerfMetric 1.0 PerfMetric.qml
 StorageDiskCard 1.0 StorageDiskCard.qml
+StatusPill 1.0 StatusPill.qml

@@ -67,6 +67,15 @@ Rectangle {
             }
         }
 
+        StatusPill {
+            state: cpuCardRoot.cpuTotal < 0 ? "info"
+                   : (cpuCardRoot.cpuTotal >= 85 ? "error"
+                   : (cpuCardRoot.cpuTotal >= 65 ? "warning" : "ok"))
+            label: cpuCardRoot.cpuTotal < 0 ? "等待采样"
+                  : (cpuCardRoot.cpuTotal >= 85 ? "负载过高"
+                  : (cpuCardRoot.cpuTotal >= 65 ? "负载偏高" : "负载正常"))
+        }
+
         // Hardware-Cached 2D Gradient Area Sparkline
         Canvas {
             id: sparklineCanvas
