@@ -239,7 +239,7 @@ ApplicationWindow {
         ListElement { appId: "touch-test"; appTitle: "点击测试"; iconSource: "qrc:/assets/icons/mouse-pointer-click.svg"; accent: "#FF4D6D" }
         ListElement { appId: "files"; appTitle: "文件"; iconSource: "qrc:/assets/icons/folder.svg"; accent: "#3B82F6" }
         ListElement { appId: "settings"; appTitle: "设置"; iconSource: "qrc:/assets/icons/settings.svg"; accent: "#8B5CF6" }
-        ListElement { appId: "mindustry"; appTitle: "像素工厂"; iconSource: "qrc:/assets/icons/zap-white.svg"; accent: "#E879F9" }
+        ListElement { appId: "mindustry"; appTitle: "像素工厂"; iconSource: "qrc:/assets/icons/mindustry.png"; accent: "#59616A" }
     }
 
     Timer {
@@ -485,6 +485,7 @@ ApplicationWindow {
                         title: model.appTitle
                         icon: model.iconSource
                         accentColor: model.accent
+                        fullBleedIcon: model.appId === "mindustry"
                         onClicked: model.appId === "mindustry"
                                    ? window.launchMindustryDirect()
                                    : window.openApp(model.appId)

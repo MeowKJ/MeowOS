@@ -30,6 +30,9 @@ grep -q 'SDL_TOUCH_MOUSE_EVENTS=1' scripts/meow-mindustry-launch.sh
 grep -q 'model.appId === "mindustry"' qml/Main.qml
 grep -q 'window.launchMindustryDirect()' qml/Main.qml
 grep -q 'startInMindustry' qml/Main.qml
+grep -q 'qrc:/assets/icons/mindustry.png' qml/Main.qml
+grep -q 'assets/icons/mindustry.png' qml.qrc
+test -f assets/icons/mindustry.png
 ! grep -q 'mindustryComponent' qml/Main.qml
 ! grep -q 'MindustryApp.qml' qml.qrc
 
