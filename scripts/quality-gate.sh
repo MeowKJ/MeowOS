@@ -17,6 +17,7 @@ grep -q 'atomic_load_explicit' src/runtime/runtime_snapshot.cpp
 test -f src/hal/hal_interfaces.cpp
 grep -q 'transformTouchPoint' src/hal/hal_interfaces.cpp
 grep -q 'class IAppProcessHal' src/hal/hal_interfaces.h
+grep -q 'setDisplayGeometry' src/hal/hal_interfaces.h
 
 score_elegance=0
 score_complete=0

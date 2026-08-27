@@ -85,6 +85,8 @@ display backend exposes 1280×800 to applications. The input adapter applies
 the same quarter-turn to touch coordinates. QML and games therefore never
 rotate independently, avoiding double rotation and keeping an RK adapter
 binary-compatible with the Allwinner policy layer.
+`IInputHal::setDisplayGeometry()` makes this synchronization explicit: an
+adapter must accept the display geometry before it starts delivering touches.
 
 ## Migration order
 

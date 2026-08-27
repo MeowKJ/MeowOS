@@ -37,6 +37,9 @@ public:
 class IInputHal {
 public:
     virtual ~IInputHal() = default;
+    // The input adapter must consume the same geometry as the display adapter;
+    // this prevents a rotated framebuffer with an unrotated touch matrix.
+    virtual bool setDisplayGeometry(const DisplayGeometry &geometry) = 0;
     virtual bool start() = 0;
     virtual void stop() = 0;
     virtual std::string deviceName() const = 0;
