@@ -72,6 +72,11 @@ std::size_t TaskScheduler::pendingTasks() const
     return queue_.size();
 }
 
+std::size_t TaskScheduler::runningTasks() const
+{
+    return runningTasks_.load(std::memory_order_acquire);
+}
+
 void TaskScheduler::workerLoop()
 {
     for (;;) {
@@ -84,7 +89,14 @@ void TaskScheduler::workerLoop()
             item = queue_.top();
             queue_.pop();
         }
-        item.task();
+        runningTasks_.fetch_add(1, std::memory_order_acq_rel);
+        try {
+            item.task();
+        } catch (...) {
+            // A malformed direct WorkItem must not kill the worker or leave
+            // the observability counter permanently elevated.
+        }
+        runningTasks_.fetch_sub(1, std::memory_order_acq_rel);
     }
 }
 

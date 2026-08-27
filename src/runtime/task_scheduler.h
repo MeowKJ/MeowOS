@@ -35,6 +35,7 @@ public:
     void shutdown();
     std::size_t workerCount() const;
     std::size_t pendingTasks() const;
+    std::size_t runningTasks() const;
 
 private:
     struct WorkItem {
@@ -54,6 +55,7 @@ private:
     std::priority_queue<WorkItem, std::vector<WorkItem>, WorkOrder> queue_;
     std::vector<std::thread> workers_;
     std::atomic<std::uint64_t> nextSequence_{0};
+    std::atomic<std::size_t> runningTasks_{0};
     const std::size_t maxPendingTasks_;
     bool stopping_ = false;
 };

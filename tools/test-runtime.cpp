@@ -45,6 +45,7 @@ int main()
     for (std::future<void> &job : jobs)
         job.get();
     assert(completed.load() == 32);
+    assert(scheduler.runningTasks() == 0);
     scheduler.shutdown();
 
     meow::TaskScheduler bounded(1, 1);

@@ -42,6 +42,8 @@ The queue has a configurable pending-task limit (1024 by default). Producers
 receive an explicit `TaskScheduler queue is full` failure instead of silently
 creating unbounded memory pressure; callers can then coalesce telemetry or
 retry interactive work according to policy.
+The scheduler also exposes pending and running counts separately, allowing the
+RGB performance UI to distinguish queue pressure from active CPU work.
 
 There is no thread-per-device rule. The worker count is bounded by available
 cores, and shutdown drains queued work before joining workers. Long-running
