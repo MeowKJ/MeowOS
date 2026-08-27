@@ -10,10 +10,17 @@ TERMINATING=0
 [ -r "$JAR" ] || { echo "Mindustry.jar not found" >&2; exit 1; }
 
 cleanup() {
-    if [ -n "$PALETTE_PID" ]; then kill "$PALETTE_PID" 2>/dev/null || true; wait "$PALETTE_PID" 2>/dev/null || true; fi
-    if [ -n "$ONBOARD_PID" ]; then kill "$ONBOARD_PID" 2>/dev/null || true; wait "$ONBOARD_PID" 2>/dev/null || true; fi
-    if [ -n "$FCITX_PID" ]; then kill "$FCITX_PID" 2>/dev/null || true; wait "$FCITX_PID" 2>/dev/null || true; fi
-    if [ -n "$XORG_PID" ]; then kill "$XORG_PID" 2>/dev/null || true; wait "$XORG_PID" 2>/dev/null || true; fi
+    for pid in "$PALETTE_PID" "$ONBOARD_PID" "$FCITX_PID" "$XORG_PID"; do
+        [ -n "$pid" ] || continue
+        # Kill children first: a gdbus call can otherwise keep the shell in
+        # wait(2) forever during systemd stop.
+        pkill -TERM -P "$pid" 2>/dev/null || true
+        kill "$pid" 2>/dev/null || true
+        sleep 0.05
+        pkill -KILL -P "$pid" 2>/dev/null || true
+        kill -KILL "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
+    done
 }
 
 handle_signal() {
@@ -130,7 +137,7 @@ if command -v onboard >/dev/null 2>&1; then
     # obstructed.  The palette remains a touch target to show it again.
     j=0
     while [ "$j" -lt 30 ]; do
-        if /usr/bin/setpriv --reuid=radxa --regid=radxa --init-groups env $USER_ENV \
+        if /usr/bin/timeout 2s /usr/bin/setpriv --reuid=radxa --regid=radxa --init-groups env $USER_ENV \
             gdbus call --session --dest org.onboard.Onboard \
             --object-path /org/onboard/Onboard/Keyboard \
             --method org.onboard.Onboard.Keyboard.Hide >/dev/null 2>&1; then
@@ -149,7 +156,7 @@ fi
 # Debian image does not ship util-linux runuser; setpriv provides the same
 # privilege drop without requiring an interactive shell.
 set +e
-/usr/bin/setpriv --reuid=radxa --regid=radxa --init-groups env \
+        /usr/bin/timeout 2s /usr/bin/setpriv --reuid=radxa --regid=radxa --init-groups env \
     DISPLAY=:0 SDL_VIDEODRIVER=x11 SDL_TOUCH_MOUSE_EVENTS=1 \
     XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
     XMODIFIERS=@im=fcitx GTK_IM_MODULE=fcitx QT_IM_MODULE=fcitx HOME=/home/radxa \

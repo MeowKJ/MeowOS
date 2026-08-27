@@ -25,6 +25,8 @@ grep -q 'x11-xserver-utils xinput xserver-xorg-input-libinput' scripts/install-l
 grep -q 'xrandr --output "$OUTPUT" --rotate left' scripts/meow-mindustry-launch.sh
 grep -q 'Coordinate Transformation Matrix' scripts/meow-mindustry-launch.sh
 grep -q 'TERMINATING=1' scripts/meow-mindustry-launch.sh
+grep -q 'pkill -TERM -P' scripts/meow-mindustry-launch.sh
+grep -q '/usr/bin/timeout 2s' scripts/meow-mindustry-launch.sh
 grep -q -- '-width 1280 -height 800 -maximized false -testMobile' scripts/meow-mindustry-launch.sh
 grep -q 'SDL_TOUCH_MOUSE_EVENTS=1' scripts/meow-mindustry-launch.sh
 ! grep -q 'SDL_MOUSE_TOUCH_EVENTS=1' scripts/meow-mindustry-launch.sh
