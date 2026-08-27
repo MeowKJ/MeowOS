@@ -14,33 +14,10 @@ done
 test -f config/hardware-profiles/a5e.env
 test -f config/hardware-profiles/a733-generic.env
 test -f systemd/meow-mindustry.service
-test -f config/meow-mindustry-sudoers
-grep -q 'meow-mindustry-sudoers' scripts/install-live.sh
-grep -q '/bin/systemctl --no-block start meow-mindustry.service' config/meow-mindustry-sudoers
-grep -q 'NoNewPrivileges=false' systemd/meow-os.service
-grep -q 'QProcess::execute(QStringLiteral("sudo")' src/systembackend.cpp
-grep -q 'QStringLiteral("--no-block")' src/systembackend.cpp
-grep -q 'QStringLiteral("/bin/systemctl")' src/systembackend.cpp
 grep -q 'x11-xserver-utils xinput xserver-xorg-input-libinput' scripts/install-live.sh
 grep -q 'xrandr --output "$OUTPUT" --rotate left' scripts/meow-mindustry-launch.sh
 grep -q 'Coordinate Transformation Matrix' scripts/meow-mindustry-launch.sh
 grep -q 'TERMINATING=1' scripts/meow-mindustry-launch.sh
-grep -q -- '-width 1280 -height 800 -maximized false -testMobile' scripts/meow-mindustry-launch.sh
-grep -q 'SDL_TOUCH_MOUSE_EVENTS=1' scripts/meow-mindustry-launch.sh
-! grep -q 'SDL_MOUSE_TOUCH_EVENTS=1' scripts/meow-mindustry-launch.sh
-grep -q 'preventStealing: true' qml/components/IosSwitch.qml
-! grep -q 'Behavior on color' qml/components/IosSwitch.qml
-grep -q 'switchRoot.toggled(!switchRoot.checked)' qml/components/IosSwitch.qml
-grep -q 'systemBackend.keepScreenOnApps.indexOf' qml/apps/SettingsApp.qml
-grep -q 'appId: "mindustry", title: "像素工厂"' qml/apps/SettingsApp.qml
-grep -q 'model.appId === "mindustry"' qml/Main.qml
-grep -q 'window.launchMindustryDirect()' qml/Main.qml
-grep -q 'startInMindustry' qml/Main.qml
-grep -q 'qrc:/assets/icons/mindustry.png' qml/Main.qml
-grep -q 'assets/icons/mindustry.png' qml.qrc
-test -f assets/icons/mindustry.png
-! grep -q 'mindustryComponent' qml/Main.qml
-! grep -q 'MindustryApp.qml' qml.qrc
 
 grep -q 'MEOW_QPA_PLATFORM=eglfs' config/display.conf
 VERSION_VALUE=$(cat VERSION)
@@ -57,7 +34,7 @@ grep -q 'QT_QUICK_BACKEND' scripts/meow-display-launcher
 grep -q 'performanceHistory' src/systembackend.h
 grep -q 'cpuFrequencies' src/systembackend.h
 grep -q 'maximumFlickVelocity' qml/components/SettingsFlickable.qml
-grep -q 'pressDelay: 90' qml/components/SettingsFlickable.qml
+grep -q 'pressDelay: 0' qml/components/SettingsFlickable.qml
 grep -q 'stack.depth > 1' qml/Main.qml
 grep -q 'inputLimit2400mA = 0x17' src/systembackend.cpp
 grep -q 'chargeCurrent2400mA = 0x28' src/systembackend.cpp

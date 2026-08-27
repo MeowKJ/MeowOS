@@ -12,11 +12,8 @@ Rectangle {
     implicitWidth: 44
     implicitHeight: 26
     radius: height / 2
-    // Press feedback belongs only to the switch under the finger. Avoid
-    // animating through the previous grey state after the value changes.
-    color: checked
-           ? (switchMouse.pressed ? Qt.darker(activeColor, 1.12) : activeColor)
-           : (switchMouse.pressed ? Qt.darker(inactiveColor, 1.08) : inactiveColor)
+    color: checked ? activeColor : inactiveColor
+    Behavior on color { ColorAnimation { duration: 160 } }
 
     Rectangle {
         id: thumb
@@ -30,14 +27,11 @@ Rectangle {
     }
 
     MouseArea {
-        id: switchMouse
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
-        preventStealing: true
         onClicked: {
-            // The owner is the source of truth. Emitting the requested value
-            // preserves its binding and prevents a one-frame stale state.
-            switchRoot.toggled(!switchRoot.checked)
+            switchRoot.checked = !switchRoot.checked
+            switchRoot.toggled(switchRoot.checked)
         }
     }
 }

@@ -8,8 +8,6 @@ Flickable {
     boundsMovement: Flickable.FollowBoundsBehavior
     maximumFlickVelocity: 4000
     flickDeceleration: 1500
-    // Distinguish a deliberate tap from a scroll before a child control takes
-    // the event. Zero delay makes small finger jitter cancel many clicks.
-    pressDelay: 90
+    pressDelay: 0
     pixelAligned: true
 }

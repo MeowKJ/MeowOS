@@ -16,6 +16,8 @@ Rectangle {
     border.color: selected ? "#C7D2FE" : "transparent"
     border.width: selected ? 1 : 0
 
+    Behavior on color { ColorAnimation { duration: 140 } }
+
     RowLayout {
         anchors.fill: parent
         anchors.leftMargin: 10

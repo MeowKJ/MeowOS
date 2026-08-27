@@ -90,7 +90,6 @@ install -m 0644 assets/boot/meow-boot-portrait.png /opt/meow-os/share/early-spla
 install -m 0755 systemd/vt_mode.py /opt/meow-os/vt_mode.py
 install -m 0644 systemd/meow-os.service /etc/systemd/system/meow-os.service
 install -m 0644 systemd/meow-mindustry.service /etc/systemd/system/meow-mindustry.service
-install -m 0440 config/meow-mindustry-sudoers /etc/sudoers.d/meow-mindustry
 install -m 0644 systemd/meow-charge-enable.service /etc/systemd/system/meow-charge-enable.service
 install -m 0644 systemd/meow-nvme-mount@.service /etc/systemd/system/meow-nvme-mount@.service
 install -m 0644 config/display.conf /etc/meow-os/display.conf
@@ -98,7 +97,6 @@ install -m 0644 config/eglfs-kms.json /opt/meow-os/eglfs-kms.json
 install -m 0644 config/asound.conf /etc/asound.conf
 install -m 0644 polkit/49-meow-os-network.rules /etc/polkit-1/rules.d/49-meow-os-network.rules
 install -m 0644 polkit/49-meow-os-network.pkla /etc/polkit-1/localauthority/50-local.d/49-meow-os-network.pkla
-rm -f /etc/polkit-1/rules.d/49-meow-os-mindustry.rules
 install -m 0644 udev/99-meow-os-input.rules /etc/udev/rules.d/99-meow-os-input.rules
 install -m 0644 udev/90-meow-nvme-data.rules /etc/udev/rules.d/90-meow-nvme-data.rules
 printf 'NAME="Meow OS"\nVERSION="%s"\nID=meow-os\nPRETTY_NAME="Meow OS %s"\n' "$VERSION" "$VERSION" > /etc/meow-os-release

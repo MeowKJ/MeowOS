@@ -67,7 +67,6 @@ ApplicationWindow {
                                          || Qt.application.arguments.indexOf("--qa-file-move") >= 0
     readonly property bool qaFileCopy: Qt.application.arguments.indexOf("--qa-file-copy") >= 0
     readonly property bool qaFileMove: Qt.application.arguments.indexOf("--qa-file-move") >= 0
-    readonly property bool startInMindustry: Qt.application.arguments.indexOf("--mindustry") >= 0
     readonly property bool settingsQaMetrics: Qt.application.arguments.indexOf("--qa") >= 0
     readonly property bool settingsQaSwitch: Qt.application.arguments.indexOf("--qa-switch") >= 0
 
@@ -75,6 +74,7 @@ ApplicationWindow {
     property var cachedReactionGame: null
     property var cachedFileManager: null
     property var cachedSettings: null
+    property var cachedMindustry: null
 
     function getAppObject(appId) {
         if (appId === "touch-test") {
@@ -101,6 +101,12 @@ ApplicationWindow {
                 if (cachedSettings) cachedSettings.StackView.destroyOnPop = false
             }
             return cachedSettings
+        } else if (appId === "mindustry") {
+            if (!cachedMindustry || !cachedMindustry.parent) {
+                cachedMindustry = mindustryComponent.createObject(stack)
+                if (cachedMindustry) cachedMindustry.StackView.destroyOnPop = false
+            }
+            return cachedMindustry
         }
         return null
     }
@@ -112,10 +118,6 @@ ApplicationWindow {
             if (immediate) stack.push(appObj, StackView.Immediate)
             else stack.push(appObj)
         }
-    }
-
-    function launchMindustryDirect() {
-        systemBackend.launchMindustry()
     }
 
     function checkIdleState() {
@@ -239,7 +241,7 @@ ApplicationWindow {
         ListElement { appId: "touch-test"; appTitle: "点击测试"; iconSource: "qrc:/assets/icons/mouse-pointer-click.svg"; accent: "#FF4D6D" }
         ListElement { appId: "files"; appTitle: "文件"; iconSource: "qrc:/assets/icons/folder.svg"; accent: "#3B82F6" }
         ListElement { appId: "settings"; appTitle: "设置"; iconSource: "qrc:/assets/icons/settings.svg"; accent: "#8B5CF6" }
-        ListElement { appId: "mindustry"; appTitle: "像素工厂"; iconSource: "qrc:/assets/icons/mindustry.png"; accent: "#59616A" }
+        ListElement { appId: "mindustry"; appTitle: "像素工厂"; iconSource: "qrc:/assets/icons/zap-white.svg"; accent: "#E879F9" }
     }
 
     Timer {
@@ -331,7 +333,6 @@ ApplicationWindow {
             Component.onCompleted: {
                 if (window.startInSettings) openApp("settings", true)
                 else if (window.startInFiles) openApp("files", true)
-                else if (window.startInMindustry) window.launchMindustryDirect()
             }
         }
 
@@ -386,7 +387,7 @@ ApplicationWindow {
             anchors.fill: parent
             z: 3000
             color: "#FCFBFD"
-            visible: !window.startInSettings && !window.startInFiles && !window.startInMindustry
+            visible: !window.startInSettings && !window.startInFiles
             opacity: 1
 
             Column {
@@ -485,10 +486,7 @@ ApplicationWindow {
                         title: model.appTitle
                         icon: model.iconSource
                         accentColor: model.accent
-                        fullBleedIcon: model.appId === "mindustry"
-                        onClicked: model.appId === "mindustry"
-                                   ? window.launchMindustryDirect()
-                                   : window.openApp(model.appId)
+                        onClicked: window.openApp(model.appId)
                     }
                 }
             }
@@ -526,6 +524,15 @@ ApplicationWindow {
         id: settingsComponent
         SettingsApp {
             objectName: "settings"
+            onExitRequested: stack.pop()
+            onBackRequested: stack.pop()
+        }
+    }
+
+    Component {
+        id: mindustryComponent
+        MindustryApp {
+            objectName: "mindustry"
             onExitRequested: stack.pop()
             onBackRequested: stack.pop()
         }

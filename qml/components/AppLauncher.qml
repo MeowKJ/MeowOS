@@ -5,7 +5,6 @@ Item {
     property string title: ""
     property url icon: ""
     property color accentColor: "#7B6DF0"
-    property bool fullBleedIcon: false
     signal clicked()
 
     width: 110
@@ -23,11 +22,11 @@ Item {
 
         Image {
             anchors.centerIn: parent
-            width: root.fullBleedIcon ? 76 : 46
-            height: root.fullBleedIcon ? 76 : 46
+            width: 46
+            height: 46
             source: root.icon
-            sourceSize.width: root.fullBleedIcon ? 152 : 92
-            sourceSize.height: root.fullBleedIcon ? 152 : 92
+            sourceSize.width: 92
+            sourceSize.height: 92
             smooth: true
         }
 
