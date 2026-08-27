@@ -32,6 +32,8 @@ therefore replace the Allwinner adapter without changing policy or UI code.
 Workers drain higher-priority work first and preserve FIFO order within a
 priority. The UI thread never waits on hardware or process I/O. Results are
 returned as futures/events and published as immutable snapshots.
+The test suite also locks the priority ordering with a single-worker scenario,
+so a critical hand-off cannot be delayed behind queued background work.
 
 `RuntimeSnapshotStore` is the first concrete state boundary: workers publish a
 complete immutable metrics snapshot, while QML-facing code obtains an atomic

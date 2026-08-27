@@ -6,6 +6,8 @@
 
 #include <atomic>
 #include <cassert>
+#include <future>
+#include <mutex>
 #include <thread>
 #include <stdexcept>
 #include <utility>
@@ -64,6 +66,28 @@ int main()
     release.set_value();
     first.wait();
     bounded.shutdown();
+
+    meow::TaskScheduler priorityScheduler(1, 8);
+    std::promise<void> priorityRelease;
+    std::future<void> priorityGate = priorityRelease.get_future();
+    std::vector<int> order;
+    std::mutex orderMutex;
+    const std::future<void> blocker = priorityScheduler.submit(meow::TaskPriority::Critical,
+        [&priorityGate, &order, &orderMutex] {
+            { std::lock_guard<std::mutex> lock(orderMutex); order.push_back(0); }
+            priorityGate.wait();
+        });
+    while (priorityScheduler.runningTasks() == 0) std::this_thread::yield();
+    const std::future<void> low = priorityScheduler.submit(meow::TaskPriority::Background,
+        [&order, &orderMutex] { std::lock_guard<std::mutex> lock(orderMutex); order.push_back(1); });
+    const std::future<void> high = priorityScheduler.submit(meow::TaskPriority::Critical,
+        [&order, &orderMutex] { std::lock_guard<std::mutex> lock(orderMutex); order.push_back(2); });
+    priorityRelease.set_value();
+    blocker.get();
+    high.get();
+    low.get();
+    assert(order.size() == 3 && order[0] == 0 && order[1] == 2 && order[2] == 1);
+    priorityScheduler.shutdown();
 
     meow::RuntimeSnapshotStore snapshots;
     std::atomic<bool> publishing(true);
