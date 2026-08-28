@@ -23,6 +23,7 @@ grep -q 'QStringLiteral("--no-block")' src/systembackend.cpp
 grep -q 'QStringLiteral("/bin/systemctl")' src/systembackend.cpp
 grep -q 'x11-xserver-utils xinput xserver-xorg-input-libinput' scripts/install-live.sh
 grep -q 'xrandr --output "$OUTPUT" --rotate left' scripts/meow-mindustry-launch.sh
+! grep -q "$(printf '\\r')" config/meow-mindustry-sudoers
 grep -q 'Coordinate Transformation Matrix' scripts/meow-mindustry-launch.sh
 grep -q 'TERMINATING=1' scripts/meow-mindustry-launch.sh
 grep -q 'TimeoutStopSec=10s' systemd/meow-mindustry.service
