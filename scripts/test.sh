@@ -63,6 +63,8 @@ test "$VERSION_VALUE" = "$HEADER_VERSION"
 printf '%s\n' "$VERSION_VALUE" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'
 grep -q 'Source changed but version is still' scripts/install-live.sh
 grep -q 'quality-gate.sh' scripts/install-live.sh
+grep -q "sed 's/\\r\$//' scripts/meow-mindustry-launch.sh" scripts/install-live.sh
+grep -q "sed 's/\\r\$//' config/meow-mindustry-sudoers" scripts/install-live.sh
 test -x scripts/bump-version
 test -x scripts/quality-gate.sh
 grep -q 'hardwareCapabilities' src/systembackend.h

@@ -81,9 +81,9 @@ install -d -m 0755 /opt/meow-os/bin /opt/meow-os/assets/sounds /opt/meow-os/shar
 install -m 0755 meow-os /opt/meow-os/meow-os
 install -m 0755 scripts/mount-nvme-data /opt/meow-os/bin/mount-nvme-data
 install -m 0644 assets/sounds/volume-meow.wav /opt/meow-os/assets/sounds/volume-meow.wav
-install -m 0755 scripts/meow-display-launcher /opt/meow-os/bin/meow-display-launcher
+sed 's/\r$//' scripts/meow-display-launcher > /tmp/meow-display-launcher && install -m 0755 /tmp/meow-display-launcher /opt/meow-os/bin/meow-display-launcher
 install -d -m 0755 /opt/mindustry/gl4es/lib
-install -m 0755 scripts/meow-mindustry-launch.sh /opt/mindustry/meow-mindustry-launch.sh
+sed 's/\r$//' scripts/meow-mindustry-launch.sh > /tmp/meow-mindustry-launch.sh && install -m 0755 /tmp/meow-mindustry-launch.sh /opt/mindustry/meow-mindustry-launch.sh
 if [ -f /tmp/gl4es/lib/libGL.so.1 ]; then
     install -m 0755 /tmp/gl4es/lib/libGL.so.1 /opt/mindustry/gl4es/lib/libGL.so.1
     ln -sf libGL.so.1 /opt/mindustry/gl4es/lib/libGL.so
@@ -100,9 +100,9 @@ install -m 0755 plymouth/meow-os/zz-meow-plymouth /opt/meow-os/share/early-splas
 install -m 0644 assets/boot/meow-boot-landscape.png /opt/meow-os/share/early-splash/assets/meow-boot-landscape.png
 install -m 0644 assets/boot/meow-boot-portrait.png /opt/meow-os/share/early-splash/assets/meow-boot-portrait.png
 install -m 0755 systemd/vt_mode.py /opt/meow-os/vt_mode.py
-install -m 0644 systemd/meow-os.service /etc/systemd/system/meow-os.service
-install -m 0644 systemd/meow-mindustry.service /etc/systemd/system/meow-mindustry.service
-install -m 0440 config/meow-mindustry-sudoers /etc/sudoers.d/meow-mindustry
+sed 's/\r$//' systemd/meow-os.service > /tmp/meow-os.service && install -m 0644 /tmp/meow-os.service /etc/systemd/system/meow-os.service
+sed 's/\r$//' systemd/meow-mindustry.service > /tmp/meow-mindustry.service && install -m 0644 /tmp/meow-mindustry.service /etc/systemd/system/meow-mindustry.service
+sed 's/\r$//' config/meow-mindustry-sudoers > /tmp/meow-mindustry-sudoers && install -m 0440 /tmp/meow-mindustry-sudoers /etc/sudoers.d/meow-mindustry
 install -m 0644 systemd/meow-charge-enable.service /etc/systemd/system/meow-charge-enable.service
 install -m 0644 systemd/meow-nvme-mount@.service /etc/systemd/system/meow-nvme-mount@.service
 install -m 0644 config/display.conf /etc/meow-os/display.conf
