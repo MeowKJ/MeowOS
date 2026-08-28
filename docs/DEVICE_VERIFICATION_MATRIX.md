@@ -4,6 +4,7 @@ Run `scripts/verify-device.sh` from the deployed checkout on the target Linux
 device. The script is intentionally non-destructive and builds into `/tmp`.
 Add `--live` after the build checks to read the active desktop service and
 connected display without changing system state.
+Add `--stability` to run three start/stop cycles with orphan-process checks.
 
 | Gate | Evidence | Pass condition |
 | --- | --- | --- |

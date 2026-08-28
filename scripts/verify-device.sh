@@ -55,5 +55,35 @@ if [ "${1:-}" = "--live" ]; then
     fi
 fi
 
+if [ "${1:-}" = "--stability" ]; then
+    command -v systemctl >/dev/null 2>&1 || { printf '%s\n' 'systemd=unavailable' >&2; exit 1; }
+    printf '%s\n' '[stability] three foreground-session cycles'
+    for round in 1 2 3; do
+        sudo -n systemctl reset-failed meow-mindustry.service >/dev/null 2>&1 || true
+        sudo -n systemctl start --no-block meow-mindustry.service
+        sleep 12
+        startState=$(systemctl is-active meow-mindustry.service 2>/dev/null || true)
+        if [ "$startState" != "active" ]; then
+            printf 'round=%s start=%s\n' "$round" "$startState" >&2
+            exit 1
+        fi
+        set +e
+        timeout 20s sudo -n systemctl stop meow-mindustry.service
+        stopRc=$?
+        set -e
+        stopState=$(systemctl is-active meow-mindustry.service 2>/dev/null || true)
+        shellState=$(systemctl is-active meow-os.service 2>/dev/null || true)
+        if pgrep -af '[j]ava.*Mindustry.jar|[o]nboard|[f]citx|[X]org' >/dev/null 2>&1; then
+            remnants=present
+        else
+            remnants=none
+        fi
+        printf 'round=%s start=%s stop_rc=%s stopped=%s shell=%s remnants=%s\n' \
+            "$round" "$startState" "$stopRc" "$stopState" "$shellState" "$remnants"
+        [ "$stopRc" -eq 0 ] && [ "$shellState" = "active" ] && [ "$remnants" = "none" ] || exit 1
+    done
+    printf '%s\n' 'stability_verification=passed'
+fi
+
 printf '%s\n' 'runtime_tests=passed'
 printf '%s\n' 'device_verification=passed'
