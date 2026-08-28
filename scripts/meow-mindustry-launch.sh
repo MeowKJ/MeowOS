@@ -156,7 +156,7 @@ fi
 # Debian image does not ship util-linux runuser; setpriv provides the same
 # privilege drop without requiring an interactive shell.
 set +e
-        /usr/bin/timeout 2s /usr/bin/setpriv --reuid=radxa --regid=radxa --init-groups env \
+/usr/bin/setpriv --reuid=radxa --regid=radxa --init-groups env \
     DISPLAY=:0 SDL_VIDEODRIVER=x11 SDL_TOUCH_MOUSE_EVENTS=1 \
     XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
     XMODIFIERS=@im=fcitx GTK_IM_MODULE=fcitx QT_IM_MODULE=fcitx HOME=/home/radxa \
