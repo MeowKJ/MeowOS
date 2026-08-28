@@ -5,7 +5,7 @@ ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT_DIR"
 
 printf '%s\n' '[1/5] shell syntax'
-sh -n scripts/install-live.sh scripts/mount-nvme-data scripts/meow-display-launcher scripts/meow-wait-display scripts/configure-boot-branding scripts/install-early-splash scripts/meow-mindustry-launch.sh scripts/verify-device.sh scripts/build-runtime.sh
+sh -n scripts/install-live.sh scripts/mount-nvme-data scripts/meow-display-launcher scripts/meow-wait-display scripts/meow-console-recovery scripts/configure-boot-branding scripts/install-early-splash scripts/meow-mindustry-launch.sh scripts/verify-device.sh scripts/build-runtime.sh
 
 printf '%s\n' '[2/5] required deployment files'
 for file in scripts/mount-nvme-data systemd/meow-nvme-mount@.service udev/90-meow-nvme-data.rules; do
@@ -14,10 +14,13 @@ done
 test -f config/hardware-profiles/a5e.env
 test -f config/hardware-profiles/a733-generic.env
 test -f systemd/meow-mindustry.service
+test -f systemd/meow-console-recovery.service
 test -f config/meow-mindustry-sudoers
 grep -q 'meow-mindustry-sudoers' scripts/install-live.sh
 grep -q '/bin/systemctl start meow-mindustry.service' config/meow-mindustry-sudoers
 grep -q 'NoNewPrivileges=false' systemd/meow-os.service
+grep -q 'OnFailure=meow-console-recovery.service' systemd/meow-os.service
+grep -q 'StartLimitBurst=3' systemd/meow-os.service
 grep -q 'QProcess::execute(QStringLiteral("sudo")' src/systembackend.cpp
 grep -q 'QStringLiteral("/bin/systemctl")' src/systembackend.cpp
 grep -q 'x11-xserver-utils xinput xserver-xorg-input-libinput' scripts/install-live.sh

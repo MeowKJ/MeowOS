@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+# Make a failed graphical boot diagnosable instead of leaving a black VT.
+/usr/bin/python3 /opt/meow-os/vt_mode.py text 2>/dev/null || true
+if [ -w /sys/class/graphics/fbcon/cursor_blink ]; then
+    printf '%s\n' 1 > /sys/class/graphics/fbcon/cursor_blink || true
+fi
+/bin/systemctl start getty@tty1.service || true
+/usr/bin/chvt 1 2>/dev/null || true
+printf '%s\n' 'MeowOS graphical startup failed. Login on tty1 and run:' > /dev/tty1 2>/dev/null || true
+printf '%s\n' '  systemctl status meow-os.service' > /dev/tty1 2>/dev/null || true
+printf '%s\n' '  journalctl -u meow-os.service -b --no-pager' > /dev/tty1 2>/dev/null || true

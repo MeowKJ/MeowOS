@@ -90,6 +90,7 @@ if [ -f /tmp/gl4es/lib/libGL.so.1 ]; then
 fi
 install -m 0755 scripts/meow-backlight-permissions /opt/meow-os/bin/meow-backlight-permissions
 install -m 0755 scripts/meow-wait-display /opt/meow-os/bin/meow-wait-display
+sed 's/\r$//' scripts/meow-console-recovery > /tmp/meow-console-recovery && install -m 0755 /tmp/meow-console-recovery /opt/meow-os/bin/meow-console-recovery
 install -m 0755 scripts/configure-boot-branding /opt/meow-os/bin/configure-boot-branding
 install -m 0755 scripts/install-early-splash /opt/meow-os/bin/install-early-splash
 install -m 0644 plymouth/meow-os/meow-os.plymouth /opt/meow-os/share/early-splash/theme/meow-os.plymouth
@@ -101,6 +102,7 @@ install -m 0644 assets/boot/meow-boot-landscape.png /opt/meow-os/share/early-spl
 install -m 0644 assets/boot/meow-boot-portrait.png /opt/meow-os/share/early-splash/assets/meow-boot-portrait.png
 install -m 0755 systemd/vt_mode.py /opt/meow-os/vt_mode.py
 sed 's/\r$//' systemd/meow-os.service > /tmp/meow-os.service && install -m 0644 /tmp/meow-os.service /etc/systemd/system/meow-os.service
+sed 's/\r$//' systemd/meow-console-recovery.service > /tmp/meow-console-recovery.service && install -m 0644 /tmp/meow-console-recovery.service /etc/systemd/system/meow-console-recovery.service
 sed 's/\r$//' systemd/meow-mindustry.service > /tmp/meow-mindustry.service && install -m 0644 /tmp/meow-mindustry.service /etc/systemd/system/meow-mindustry.service
 sed 's/\r$//' config/meow-mindustry-sudoers > /tmp/meow-mindustry-sudoers && install -m 0440 /tmp/meow-mindustry-sudoers /etc/sudoers.d/meow-mindustry
 install -m 0644 systemd/meow-charge-enable.service /etc/systemd/system/meow-charge-enable.service

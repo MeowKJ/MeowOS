@@ -1,0 +1,6 @@
+[Unit]
+Description=MeowOS graphical boot recovery console
+
+[Service]
+Type=oneshot
+ExecStart=/opt/meow-os/bin/meow-console-recovery
