@@ -127,6 +127,7 @@ test -x scripts/build-linux.sh
 test -x scripts/verify-device.sh
 grep -q -- '--live' scripts/verify-device.sh
 grep -q -- '--stability' scripts/verify-device.sh
+! grep -q 'systemctl start --no-block meow-mindustry.service' scripts/verify-device.sh
 grep -q 'no active display session' scripts/verify-device.sh
 test -x scripts/build-runtime.sh
 test -f cmake/runtime-tests/CMakeLists.txt

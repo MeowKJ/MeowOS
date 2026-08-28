@@ -60,7 +60,7 @@ if [ "${1:-}" = "--stability" ]; then
     printf '%s\n' '[stability] three foreground-session cycles'
     for round in 1 2 3; do
         sudo -n systemctl reset-failed meow-mindustry.service >/dev/null 2>&1 || true
-        sudo -n systemctl start --no-block meow-mindustry.service
+        sudo -n systemctl start meow-mindustry.service
         sleep 12
         startState=$(systemctl is-active meow-mindustry.service 2>/dev/null || true)
         if [ "$startState" != "active" ]; then
