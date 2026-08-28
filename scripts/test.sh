@@ -16,10 +16,9 @@ test -f config/hardware-profiles/a733-generic.env
 test -f systemd/meow-mindustry.service
 test -f config/meow-mindustry-sudoers
 grep -q 'meow-mindustry-sudoers' scripts/install-live.sh
-grep -q '/bin/systemctl --no-block start meow-mindustry.service' config/meow-mindustry-sudoers
+grep -q '/bin/systemctl start meow-mindustry.service' config/meow-mindustry-sudoers
 grep -q 'NoNewPrivileges=false' systemd/meow-os.service
 grep -q 'QProcess::execute(QStringLiteral("sudo")' src/systembackend.cpp
-grep -q 'QStringLiteral("--no-block")' src/systembackend.cpp
 grep -q 'QStringLiteral("/bin/systemctl")' src/systembackend.cpp
 grep -q 'x11-xserver-utils xinput xserver-xorg-input-libinput' scripts/install-live.sh
 grep -q 'xrandr --output "$OUTPUT" --rotate left' scripts/meow-mindustry-launch.sh

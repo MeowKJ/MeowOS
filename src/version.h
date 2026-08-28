@@ -1,2 +1,2 @@
 #pragma once
-#define MEOW_OS_VERSION "0.3.50"
+#define MEOW_OS_VERSION "0.3.51"

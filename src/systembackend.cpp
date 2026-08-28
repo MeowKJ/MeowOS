@@ -1674,7 +1674,7 @@ void SystemBackend::launchMindustry()
     m_mindustryLaunchFuture = m_runtimeScheduler.submit(meow::TaskPriority::Interactive, [] {
         const int exitCode = QProcess::execute(QStringLiteral("sudo"),
                                                {QStringLiteral("-n"), QStringLiteral("/bin/systemctl"),
-                                                QStringLiteral("--no-block"), QStringLiteral("start"),
+                                                QStringLiteral("start"),
                                                 QStringLiteral("meow-mindustry.service")});
         if (exitCode != 0) throw std::runtime_error("mindustry service start failed");
     });
