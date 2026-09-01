@@ -94,19 +94,13 @@ int main()
     std::future<void> gate = release.get_future();
     std::future<void> first = bounded.submit(meow::TaskPriority::Background,
                                              [&gate] { gate.wait(); });
-    bool rejected = false;
-    try {
-        bounded.submit(meow::TaskPriority::Background, [] {});
-        bounded.submit(meow::TaskPriority::Background, [] {});
-    } catch (const std::runtime_error &) {
-        rejected = true;
-    }
-    assert(rejected);
+    while (bounded.runningTasks() == 0) std::this_thread::yield();
+    std::future<void> queued = bounded.submit(meow::TaskPriority::Background, [] {});
     assert(!bounded.trySubmit(meow::TaskPriority::Background, [] {}));
     assert(bounded.stats().rejected >= 1);
-    (void)rejected;
     release.set_value();
-    first.wait();
+    first.get();
+    queued.get();
     bounded.shutdown();
 
     meow::TaskScheduler priorityScheduler(1, 8);

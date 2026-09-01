@@ -79,6 +79,8 @@ grep -q 'quality-gate.sh' scripts/install-live.sh
 grep -q 'MEOW_BUILD_JOBS' scripts/install-live.sh
 grep -q 'SuccessExitStatus=1 SIGTERM' systemd/meow-os.service
 grep -q 'performance_baseline=passed' scripts/verify-device.sh
+test -x scripts/audit-experimental-architecture.sh
+grep -q 'EXPERIMENTAL_ARCHITECTURE_ACCEPTANCE=PASS' scripts/audit-experimental-architecture.sh
 grep -Fq "sed 's/\\r\$//' scripts/meow-mindustry-launch.sh" scripts/install-live.sh
 grep -Fq "sed 's/\\r\$//' config/meow-mindustry-sudoers" scripts/install-live.sh
 test -x scripts/bump-version
