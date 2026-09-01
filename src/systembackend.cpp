@@ -1,6 +1,5 @@
 #include "systembackend.h"
 
-#include <QtConcurrent/QtConcurrentRun>
 #include <QAbstractSocket>
 #include <QCoreApplication>
 #include <QDateTime>
@@ -1033,31 +1032,6 @@ SystemBackend::SystemBackend(QObject *parent)
         brightness.close();
         refreshStatus();
     });
-    connect(&m_directoryWatcher, &QFutureWatcher<QVariantMap>::finished, this, [this]() {
-        const QVariantMap result = m_directoryWatcher.result();
-        m_fileEntries = result.value(QStringLiteral("entries")).toList();
-        m_filePath = result.value(QStringLiteral("path")).toString();
-        m_filesError = result.value(QStringLiteral("error")).toString();
-        m_filesLoading = false;
-        emit filesChanged();
-    });
-    connect(&m_previewWatcher, &QFutureWatcher<QVariantMap>::finished, this, [this]() {
-        const QVariantMap result = m_previewWatcher.result();
-        m_previewPath = result.value(QStringLiteral("path")).toString();
-        m_previewText = result.value(QStringLiteral("text")).toString();
-        m_previewError = result.value(QStringLiteral("error")).toString();
-        m_previewLoading = false;
-        emit previewChanged();
-    });
-    connect(&m_fileOperationWatcher, &QFutureWatcher<QVariantMap>::finished, this, [this]() {
-        const QVariantMap result = m_fileOperationWatcher.result();
-        const bool ok = result.value(QStringLiteral("ok")).toBool();
-        m_fileOperationRunning = false;
-        m_fileOperationText.clear();
-        emit fileOperationChanged();
-        emit operationMessage(result.value(QStringLiteral("message")).toString(), ok);
-        if (!m_filePath.isEmpty()) browseDirectory(m_filePath);
-    });
     m_mindustryLaunchPollTimer.setInterval(50);
     m_mindustryLaunchPollTimer.setSingleShot(false);
     connect(&m_mindustryLaunchPollTimer, &QTimer::timeout, this, [this]() {
@@ -1200,6 +1174,11 @@ int SystemBackend::schedulerRejectedTasks() const
 int SystemBackend::schedulerPeakPendingTasks() const
 {
     return static_cast<int>(m_runtimeScheduler.stats().peakPending);
+}
+
+int SystemBackend::schedulerWorkerCount() const
+{
+    return static_cast<int>(m_runtimeScheduler.workerCount());
 }
 
 QString SystemBackend::foregroundApp() const
@@ -2112,15 +2091,35 @@ void SystemBackend::clearBatteryCalibration()
 
 void SystemBackend::browseDirectory(const QString &requestedPath)
 {
-    if (m_directoryWatcher.isRunning()) return;
     QString path = requestedPath;
     if (path.startsWith(QStringLiteral("file:"))) path = QUrl(path).toLocalFile();
     path = QDir::cleanPath(path);
     if (!QDir(path).isAbsolute()) path = QStringLiteral("/home/radxa");
+    if (m_directoryTaskRunning) {
+        m_pendingDirectoryPath = path;
+        return;
+    }
+    m_directoryTaskRunning = true;
     m_filesLoading = true;
     m_filesError.clear();
     emit filesChanged();
-    m_directoryWatcher.setFuture(QtConcurrent::run([path]() {
+    const bool accepted = m_runtimeScheduler.trySubmit(meow::TaskPriority::Interactive, [this, path]() {
+        const auto deliver = [this](const QVariantMap &result) {
+            QMetaObject::invokeMethod(this, [this, result]() {
+                m_directoryTaskRunning = false;
+                m_fileEntries = result.value(QStringLiteral("entries")).toList();
+                m_filePath = result.value(QStringLiteral("path")).toString();
+                m_filesError = result.value(QStringLiteral("error")).toString();
+                m_filesLoading = false;
+                emit filesChanged();
+                emit schedulerChanged();
+                if (!m_pendingDirectoryPath.isEmpty()) {
+                    const QString next = m_pendingDirectoryPath;
+                    m_pendingDirectoryPath.clear();
+                    browseDirectory(next);
+                }
+            }, Qt::QueuedConnection);
+        };
         QVariantMap result;
         result.insert(QStringLiteral("path"), path);
         QVariantList entries;
@@ -2128,7 +2127,8 @@ void SystemBackend::browseDirectory(const QString &requestedPath)
         if (!directory.exists() || !directory.isReadable()) {
             result.insert(QStringLiteral("error"), QStringLiteral("无法读取此位置"));
             result.insert(QStringLiteral("entries"), entries);
-            return result;
+            deliver(result);
+            return;
         }
         const QFileInfoList files = directory.entryInfoList(
             QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Readable,
@@ -2147,34 +2147,63 @@ void SystemBackend::browseDirectory(const QString &requestedPath)
         if (files.size() > limit)
             result.insert(QStringLiteral("error"), QStringLiteral("此目录项目过多，仅显示前 1000 项"));
         result.insert(QStringLiteral("entries"), entries);
-        return result;
-    }));
+        deliver(result);
+    });
+    if (!accepted) {
+        m_directoryTaskRunning = false;
+        m_filesLoading = false;
+        m_filesError = QStringLiteral("系统忙，请稍后重试");
+        emit filesChanged();
+    }
+    emit schedulerChanged();
 }
 
 void SystemBackend::previewDocument(const QString &requestedPath)
 {
-    if (m_previewWatcher.isRunning()) return;
     QString path = requestedPath;
     if (path.startsWith(QStringLiteral("file:"))) path = QUrl(path).toLocalFile();
     path = QDir::cleanPath(path);
+    if (m_previewTaskRunning) {
+        m_pendingPreviewPath = path;
+        return;
+    }
+    m_previewTaskRunning = true;
     m_previewPath = path;
     m_previewText.clear();
     m_previewError.clear();
     m_previewLoading = true;
     emit previewChanged();
-    m_previewWatcher.setFuture(QtConcurrent::run([path]() {
+    const bool accepted = m_runtimeScheduler.trySubmit(meow::TaskPriority::Interactive, [this, path]() {
+        const auto deliver = [this](const QVariantMap &result) {
+            QMetaObject::invokeMethod(this, [this, result]() {
+                m_previewTaskRunning = false;
+                m_previewPath = result.value(QStringLiteral("path")).toString();
+                m_previewText = result.value(QStringLiteral("text")).toString();
+                m_previewError = result.value(QStringLiteral("error")).toString();
+                m_previewLoading = false;
+                emit previewChanged();
+                emit schedulerChanged();
+                if (!m_pendingPreviewPath.isEmpty()) {
+                    const QString next = m_pendingPreviewPath;
+                    m_pendingPreviewPath.clear();
+                    previewDocument(next);
+                }
+            }, Qt::QueuedConnection);
+        };
         QVariantMap result;
         result.insert(QStringLiteral("path"), path);
         QFile file(path);
         if (!file.open(QIODevice::ReadOnly)) {
             result.insert(QStringLiteral("error"), QStringLiteral("无法读取此文档"));
-            return result;
+            deliver(result);
+            return;
         }
         const qint64 limit = 256 * 1024;
         QByteArray bytes = file.read(limit + 1);
         if (bytes.contains('\0')) {
             result.insert(QStringLiteral("error"), QStringLiteral("此文件不是可预览的文本文档"));
-            return result;
+            deliver(result);
+            return;
         }
         const bool truncated = bytes.size() > limit;
         if (truncated) bytes.truncate(limit);
@@ -2182,8 +2211,15 @@ void SystemBackend::previewDocument(const QString &requestedPath)
         if (text.isNull()) text = QString::fromLocal8Bit(bytes);
         if (truncated) text.append(QStringLiteral("\n\n—— 内容过长，仅预览前 256 KB ——"));
         result.insert(QStringLiteral("text"), text);
-        return result;
-    }));
+        deliver(result);
+    });
+    if (!accepted) {
+        m_previewTaskRunning = false;
+        m_previewLoading = false;
+        m_previewError = QStringLiteral("系统忙，请稍后重试");
+        emit previewChanged();
+    }
+    emit schedulerChanged();
 }
 
 void SystemBackend::addFavoriteLocation(const QString &requestedPath, const QString &requestedLabel)
@@ -2230,7 +2266,7 @@ void SystemBackend::removeFavoriteLocation(const QString &requestedPath)
 void SystemBackend::transferFile(const QString &requestedSource, const QString &requestedDestination,
                                  bool move)
 {
-    if (m_fileOperationWatcher.isRunning()) return;
+    if (m_fileOperationRunning) return;
     const QString source = QDir::cleanPath(requestedSource);
     const QString destinationDirectory = QDir::cleanPath(requestedDestination);
     if (!isUserFilePath(source) || !isUserFilePath(destinationDirectory)
@@ -2246,25 +2282,39 @@ void SystemBackend::transferFile(const QString &requestedSource, const QString &
     m_fileOperationRunning = true;
     m_fileOperationText = move ? QStringLiteral("正在移动…") : QStringLiteral("正在复制…");
     emit fileOperationChanged();
-    m_fileOperationWatcher.setFuture(QtConcurrent::run([source, destinationDirectory, move]() {
+    const bool accepted = m_runtimeScheduler.trySubmit(meow::TaskPriority::Interactive, [this, source, destinationDirectory, move]() {
+        const auto deliver = [this](const QVariantMap &result) {
+            QMetaObject::invokeMethod(this, [this, result]() {
+                const bool ok = result.value(QStringLiteral("ok")).toBool();
+                m_fileOperationRunning = false;
+                m_fileOperationText.clear();
+                emit fileOperationChanged();
+                emit schedulerChanged();
+                emit operationMessage(result.value(QStringLiteral("message")).toString(), ok);
+                if (!m_filePath.isEmpty()) browseDirectory(m_filePath);
+            }, Qt::QueuedConnection);
+        };
         QVariantMap result;
         const QString destination = availableDestination(destinationDirectory, QFileInfo(source).fileName());
         if (destination.isEmpty()) {
             result.insert(QStringLiteral("ok"), false);
             result.insert(QStringLiteral("message"), QStringLiteral("无法生成目标名称"));
-            return result;
+            deliver(result);
+            return;
         }
         if (move && QFile::rename(source, destination)) {
             result.insert(QStringLiteral("ok"), true);
             result.insert(QStringLiteral("message"), QStringLiteral("移动完成"));
-            return result;
+            deliver(result);
+            return;
         }
         QString error;
         if (!copyFileTree(source, destination, &error)) {
             QFileInfo(destination).isDir() ? QDir(destination).removeRecursively() : QFile::remove(destination);
             result.insert(QStringLiteral("ok"), false);
             result.insert(QStringLiteral("message"), error);
-            return result;
+            deliver(result);
+            return;
         }
         if (move) {
             const bool removed = QFileInfo(source).isDir() ? QDir(source).removeRecursively()
@@ -2272,14 +2322,22 @@ void SystemBackend::transferFile(const QString &requestedSource, const QString &
             if (!removed) {
                 result.insert(QStringLiteral("ok"), false);
                 result.insert(QStringLiteral("message"), QStringLiteral("已复制，但无法删除原项目"));
-                return result;
+                deliver(result);
+                return;
             }
         }
         result.insert(QStringLiteral("ok"), true);
         result.insert(QStringLiteral("message"), move ? QStringLiteral("移动完成")
                                                        : QStringLiteral("复制完成"));
-        return result;
-    }));
+        deliver(result);
+    });
+    if (!accepted) {
+        m_fileOperationRunning = false;
+        m_fileOperationText.clear();
+        emit fileOperationChanged();
+        emit operationMessage(QStringLiteral("系统忙，请稍后重试"), false);
+    }
+    emit schedulerChanged();
 }
 
 void SystemBackend::saveAppData(const QString &key, const QString &data)

@@ -44,7 +44,9 @@ grep -q 'keepScreenOnApps' src/systembackend.h && score_complete=$((score_comple
 
 grep -q 'settingsForeground' qml/Main.qml && score_optimize=$((score_optimize + 8))
 grep -q 'loader.asynchronous = false' qml/apps/SettingsApp.qml && score_optimize=$((score_optimize + 6))
-grep -q 'QtConcurrent::run' src/systembackend.cpp && score_optimize=$((score_optimize + 8))
+grep -q 'm_runtimeScheduler.trySubmit' src/systembackend.cpp \
+    && ! grep -q 'QtConcurrent::run' src/systembackend.cpp \
+    && score_optimize=$((score_optimize + 8))
 grep -q 'renderTarget: Canvas.Image' qml/components/PerformanceCpuCard.qml && score_optimize=$((score_optimize + 8))
 
 total=$((score_elegance + score_complete + score_optimize))

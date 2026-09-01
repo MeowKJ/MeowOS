@@ -3,7 +3,6 @@
 #include <QElapsedTimer>
 #include <QEvent>
 #include <QObject>
-#include <QFutureWatcher>
 #include <QProcess>
 #include <QTimer>
 #include <QVariantList>
@@ -115,6 +114,7 @@ class SystemBackend final : public QObject
     Q_PROPERTY(int schedulerSubmittedTasks READ schedulerSubmittedTasks NOTIFY schedulerChanged)
     Q_PROPERTY(int schedulerRejectedTasks READ schedulerRejectedTasks NOTIFY schedulerChanged)
     Q_PROPERTY(int schedulerPeakPendingTasks READ schedulerPeakPendingTasks NOTIFY schedulerChanged)
+    Q_PROPERTY(int schedulerWorkerCount READ schedulerWorkerCount CONSTANT)
     Q_PROPERTY(QString foregroundApp READ foregroundApp NOTIFY sessionChanged)
     Q_PROPERTY(bool foregroundAppActive READ foregroundAppActive NOTIFY sessionChanged)
 
@@ -210,6 +210,7 @@ public:
     int schedulerSubmittedTasks() const;
     int schedulerRejectedTasks() const;
     int schedulerPeakPendingTasks() const;
+    int schedulerWorkerCount() const;
     QString foregroundApp() const;
     bool foregroundAppActive() const;
     Q_INVOKABLE bool beginForegroundApp(const QString &appId);
@@ -381,10 +382,11 @@ private:
     bool m_wifiScanRunning = false;
     bool m_wifiOperationRunning = false;
     bool m_ethernetOperationRunning = false;
-    QFutureWatcher<QVariantMap> m_directoryWatcher;
-    QFutureWatcher<QVariantMap> m_previewWatcher;
-    QFutureWatcher<QVariantMap> m_fileOperationWatcher;
-    meow::TaskScheduler m_runtimeScheduler{2};
+    bool m_directoryTaskRunning = false;
+    QString m_pendingDirectoryPath;
+    bool m_previewTaskRunning = false;
+    QString m_pendingPreviewPath;
+    meow::TaskScheduler m_runtimeScheduler{0, 256};
     meow::AppSessionSupervisor m_sessionSupervisor;
     meow::RuntimeSnapshotStore m_runtimeSnapshotStore;
     std::uint64_t m_runtimeSequence = 0;

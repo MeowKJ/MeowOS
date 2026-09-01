@@ -102,6 +102,13 @@ grep -q 'm_runtimeScheduler.trySubmit' src/systembackend.cpp
 ! grep -q 'QtConcurrent::run(runWifiOperation' src/systembackend.cpp
 ! grep -q 'QtConcurrent::run(runEthernet' src/systembackend.cpp
 grep -q 'm_ethernetOperationRunning' src/systembackend.h
+! grep -q 'QFutureWatcher' src/systembackend.h
+! grep -q 'QtConcurrent::run' src/systembackend.cpp
+! grep -q 'QtConcurrent' src/systembackend.cpp
+! grep -q 'quickcontrols2 concurrent' meow-os.pro
+grep -q 'schedulerWorkerCount' src/systembackend.h
+grep -q 'm_pendingDirectoryPath' src/systembackend.h
+grep -q 'm_pendingPreviewPath' src/systembackend.h
 grep -q 'collectStorageSnapshot' src/systembackend.cpp
 grep -q 'm_storageTaskRunning' src/systembackend.h
 grep -q 'cpuFrequencies' src/systembackend.h

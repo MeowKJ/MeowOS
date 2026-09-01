@@ -1,4 +1,4 @@
-QT += core gui qml quick quickcontrols2 concurrent
+QT += core gui qml quick quickcontrols2
 CONFIG += c++11
 TEMPLATE = app
 TARGET = meow-os

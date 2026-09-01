@@ -8,8 +8,10 @@ namespace meow {
 TaskScheduler::TaskScheduler(std::size_t workerCount, std::size_t maxPendingTasks)
     : maxPendingTasks_(std::max<std::size_t>(1, maxPendingTasks))
 {
-    if (workerCount == 0)
-        workerCount = std::max<std::size_t>(2, std::thread::hardware_concurrency());
+    if (workerCount == 0) {
+        const std::size_t detected = std::max<std::size_t>(2, std::thread::hardware_concurrency());
+        workerCount = std::min<std::size_t>(4, detected);
+    }
     workers_.reserve(workerCount);
     for (std::size_t i = 0; i < workerCount; ++i)
         workers_.emplace_back(&TaskScheduler::workerLoop, this);
