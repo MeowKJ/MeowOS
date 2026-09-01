@@ -266,6 +266,13 @@ QStringList splitNmcliTerseLine(const QString &line)
     return fields;
 }
 
+int parseWifiSignal(const QString &value)
+{
+    bool ok = false;
+    const int signal = value.trimmed().toInt(&ok);
+    return ok ? qBound(0, signal, 100) : -1;
+}
+
 QVariantList collectEthernetPorts()
 {
     QVariantList ports;
@@ -387,15 +394,36 @@ QVariantMap collectStatus(const QString &scope)
                                                               QStringLiteral("device"), QStringLiteral("wifi")}, 2500);
         const QString wifi = wifiResult.output;
         QString currentWifi;
-        int currentSignal = 0;
+        int currentSignal = -1;
         for (const QString &line : wifi.split(QRegularExpression(QStringLiteral("\\r?\\n")), Qt::SkipEmptyParts)) {
             const QStringList fields = splitNmcliTerseLine(line);
             if (fields.size() >= 2 && (fields.at(0) == QStringLiteral("yes") || fields.at(0) == QStringLiteral("*"))) {
                 currentWifi = fields.at(1);
-                if (fields.size() >= 3) currentSignal = fields.at(2).toInt();
+                if (fields.size() >= 3) currentSignal = parseWifiSignal(fields.at(2));
                 break;
             }
         }
+        // `nmcli device wifi` can briefly report SIGNAL as `--` or 0 while
+        // NetworkManager still has an active association.  Read the cached
+        // scan table and match the active SSID before exposing a false 0%.
+        if (!currentWifi.isEmpty() && currentSignal <= 0) {
+            const ProcessResult listResult = runProcessDetailed(
+                    QStringLiteral("nmcli"),
+                    {QStringLiteral("-t"), QStringLiteral("-e"), QStringLiteral("yes"),
+                     QStringLiteral("-f"), QStringLiteral("IN-USE,SSID,SIGNAL"),
+                     QStringLiteral("device"), QStringLiteral("wifi"), QStringLiteral("list"),
+                     QStringLiteral("ifname"), QStringLiteral("wlan0"),
+                     QStringLiteral("--rescan"), QStringLiteral("no")}, 1500);
+            for (const QString &line : listResult.output.split(QRegularExpression(QStringLiteral("\\r?\\n")), Qt::SkipEmptyParts)) {
+                const QStringList fields = splitNmcliTerseLine(line);
+                if (fields.size() >= 3 && fields.at(1) == currentWifi) {
+                    const int cachedSignal = parseWifiSignal(fields.at(2));
+                    if (cachedSignal > 0) currentSignal = cachedSignal;
+                    break;
+                }
+            }
+        }
+        if (currentSignal < 0) currentSignal = 0;
         if (wifiResult.ok()) {
             result.insert(QStringLiteral("wifiName"), currentWifi);
             result.insert(QStringLiteral("wifiSignal"), currentSignal);
@@ -1470,7 +1498,7 @@ void SystemBackend::applyStatusSnapshot(const QVariantMap &snapshot)
 {
     if (snapshot.contains(QStringLiteral("wifiName"))) {
         QString wifiName = snapshot.value(QStringLiteral("wifiName")).toString();
-        int wifiSignal = snapshot.value(QStringLiteral("wifiSignal"), m_wifiSignal).toInt();
+        int wifiSignal = qBound(0, snapshot.value(QStringLiteral("wifiSignal"), m_wifiSignal).toInt(), 100);
         QString wifiIpv4 = m_wifiIpv4;
         QString wifiGateway = m_wifiGateway;
         QString wifiMac = m_wifiMac;
@@ -1479,6 +1507,11 @@ void SystemBackend::applyStatusSnapshot(const QVariantMap &snapshot)
         if (snapshot.contains(QStringLiteral("wifiGateway"))) wifiGateway = snapshot.value(QStringLiteral("wifiGateway")).toString();
         if (snapshot.contains(QStringLiteral("wifiMac"))) wifiMac = snapshot.value(QStringLiteral("wifiMac")).toString();
         if (snapshot.contains(QStringLiteral("wifiDevice"))) wifiDevice = snapshot.value(QStringLiteral("wifiDevice")).toString();
+        if (!wifiName.isEmpty() && wifiSignal == 0 && m_wifiSignal > 0) {
+            // Preserve the last valid RSSI during NetworkManager's transient
+            // zero/unknown window; a connected network must not flash 0%.
+            wifiSignal = m_wifiSignal;
+        }
         if (wifiName.isEmpty() && !m_wifiName.isEmpty()) {
             ++m_wifiEmptyPollCount;
             if (m_wifiEmptyPollCount < 2) wifiName = m_wifiName;

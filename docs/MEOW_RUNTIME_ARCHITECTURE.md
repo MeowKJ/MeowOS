@@ -20,6 +20,9 @@ The HAL contracts are pure C++ and do not include Qt, QML, systemd, or a
 specific SoC. This includes the application process adapter: systemd is only
 one possible implementation of `IAppProcessHal`. A Rockchip adapter can
 therefore replace the Allwinner adapter without changing policy or UI code.
+`INetworkHal`, `IAudioHal` and `IStorageHal` use the same optional-capability
+boundary; a missing device is represented explicitly instead of leaking a
+NetworkManager/ALSA/filesystem assumption into QML.
 
 The standalone `cmake/runtime-tests` project builds these contracts without
 Qt. `scripts/build-runtime.sh` is suitable for cross-compilers and CI, while

@@ -81,6 +81,10 @@ grep -Fq "sed 's/\\r\$//' config/meow-mindustry-sudoers" scripts/install-live.sh
 test -x scripts/bump-version
 test -x scripts/quality-gate.sh
 grep -q 'hardwareCapabilities' src/systembackend.h
+grep -q 'class INetworkHal' src/hal/hal_interfaces.h
+grep -q 'class IAudioHal' src/hal/hal_interfaces.h
+grep -q 'class IStorageHal' src/hal/hal_interfaces.h
+grep -q 'false 0%' src/systembackend.cpp
 grep -q 'calibrateBattery' src/systembackend.h
 grep -q 'QT_QUICK_BACKEND' scripts/meow-display-launcher
 grep -q 'performanceHistory' src/systembackend.h

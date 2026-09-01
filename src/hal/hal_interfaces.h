@@ -54,6 +54,33 @@ public:
     virtual bool externalPowerPresent() const = 0;
 };
 
+// Optional capability adapters keep network/audio/storage policy independent
+// from NetworkManager, ALSA and the Linux mount layout.  Unsupported devices
+// return false/empty values and are hidden by the capability layer.
+class INetworkHal {
+public:
+    virtual ~INetworkHal() = default;
+    virtual bool wifiAvailable() const = 0;
+    virtual int wifiSignalPercent() const = 0;
+    virtual bool connectWifi(const std::string &ssid, const std::string &password) = 0;
+};
+
+class IAudioHal {
+public:
+    virtual ~IAudioHal() = default;
+    virtual bool available() const = 0;
+    virtual int volumePercent() const = 0;
+    virtual bool setVolumePercent(int percent) = 0;
+};
+
+class IStorageHal {
+public:
+    virtual ~IStorageHal() = default;
+    virtual bool systemStorageAvailable() const = 0;
+    virtual bool removableStorageAvailable() const = 0;
+    virtual std::string mountPoint(const std::string &device) const = 0;
+};
+
 // Process/session adapter. Implementations may use systemd, a lightweight
 // supervisor, or an embedded launcher; policy code must not depend on either.
 class IAppProcessHal {

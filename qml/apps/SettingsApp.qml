@@ -150,9 +150,14 @@ Rectangle {
             property string swipedSsid: ""
             property var currentNetwork: {
                 for (var i = 0; i < systemBackend.wifiNetworks.length; ++i) {
-                    if (systemBackend.wifiNetworks[i].active) return systemBackend.wifiNetworks[i]
+                    if (systemBackend.wifiNetworks[i].active) {
+                        var network = systemBackend.wifiNetworks[i]
+                        if (network.signal <= 0 && systemBackend.wifiSignal > 0)
+                            network.signal = systemBackend.wifiSignal
+                        return network
+                    }
                 }
-                return ({})
+                return systemBackend.wifiConnected ? ({ssid: systemBackend.wifiName, signal: systemBackend.wifiSignal}) : ({})
             }
             function selectNetwork(network) {
                 if (systemBackend.wifiOperating) return
