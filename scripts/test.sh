@@ -76,6 +76,7 @@ test "$VERSION_VALUE" = "$HEADER_VERSION"
 printf '%s\n' "$VERSION_VALUE" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'
 grep -q 'Source changed but version is still' scripts/install-live.sh
 grep -q 'quality-gate.sh' scripts/install-live.sh
+grep -q 'MEOW_BUILD_JOBS' scripts/install-live.sh
 grep -Fq "sed 's/\\r\$//' scripts/meow-mindustry-launch.sh" scripts/install-live.sh
 grep -Fq "sed 's/\\r\$//' config/meow-mindustry-sudoers" scripts/install-live.sh
 test -x scripts/bump-version
@@ -92,6 +93,9 @@ grep -q 'schedulerPendingTasks' src/systembackend.h
 grep -q 'schedulerRunningTasks' src/systembackend.h
 grep -q 'schedulerRejectedTasks' src/systembackend.h
 grep -q 'schedulerPeakPendingTasks' src/systembackend.h
+grep -q 'foregroundAppActive' src/systembackend.h
+grep -q 'beginForegroundApp' src/systembackend.cpp
+grep -q 'closeForegroundApp' qml/Main.qml
 grep -q 'm_runtimeScheduler.trySubmit' src/systembackend.cpp
 ! grep -q 'QtConcurrent::run(collectStatus' src/systembackend.cpp
 ! grep -q 'QtConcurrent::run(collectWifiNetworks' src/systembackend.cpp

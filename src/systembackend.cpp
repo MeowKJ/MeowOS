@@ -1210,6 +1210,33 @@ int SystemBackend::schedulerPeakPendingTasks() const
     return static_cast<int>(m_runtimeScheduler.stats().peakPending);
 }
 
+QString SystemBackend::foregroundApp() const
+{
+    return QString::fromStdString(m_sessionSupervisor.activeAppId());
+}
+
+bool SystemBackend::foregroundAppActive() const
+{
+    return m_sessionSupervisor.hasActiveSession();
+}
+
+bool SystemBackend::beginForegroundApp(const QString &appId)
+{
+    if (appId.isEmpty()) return false;
+    const bool started = m_sessionSupervisor.start(appId.toStdString());
+    if (started) emit sessionChanged();
+    return started;
+}
+
+bool SystemBackend::endForegroundApp(const QString &appId)
+{
+    if (!m_sessionSupervisor.hasActiveSession()) return true;
+    if (!appId.isEmpty() && foregroundApp() != appId) return false;
+    const bool stopped = m_sessionSupervisor.stop();
+    if (stopped) emit sessionChanged();
+    return stopped;
+}
+
 void SystemBackend::refresh()
 {
     refreshSystem();

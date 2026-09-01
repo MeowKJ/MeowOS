@@ -75,7 +75,13 @@ if ! command -v onboard >/dev/null 2>&1 \
 fi
 
 qmake meow-os.pro -o Makefile
-make -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)"
+# A5E images may expose 8 cores but have limited RAM; unrestricted parallel
+# rcc/g++ jobs can OOM or crash rcc. Allow CI/large hosts to override while
+# keeping deployment deterministic on the appliance.
+BUILD_JOBS="${MEOW_BUILD_JOBS:-2}"
+case "$BUILD_JOBS" in ''|*[!0-9]*) BUILD_JOBS=2 ;; esac
+[ "$BUILD_JOBS" -gt 0 ] || BUILD_JOBS=1
+make -j"$BUILD_JOBS"
 
 install -d -m 0755 /opt/meow-os/bin /opt/meow-os/assets/sounds /opt/meow-os/share/early-splash/theme /opt/meow-os/share/early-splash/assets /etc/meow-os /etc/systemd/system /etc/systemd/journald.conf.d /etc/polkit-1/rules.d /etc/polkit-1/localauthority/50-local.d /etc/udev/rules.d /var/log/meow-os
 install -d -m 2755 -o root -g systemd-journal /var/log/journal

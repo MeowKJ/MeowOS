@@ -106,12 +106,28 @@ ApplicationWindow {
     }
 
     function openApp(appId, immediate) {
+        if (stack.depth > 1) {
+            window.showOperationMessage("已有应用正在运行，请先退出", false)
+            return
+        }
+        if (!systemBackend.beginForegroundApp(appId)) {
+            window.showOperationMessage("应用会话启动失败", false)
+            return
+        }
         var appObj = getAppObject(appId)
         if (appObj) {
             appObj.visible = true
             if (immediate) stack.push(appObj, StackView.Immediate)
             else stack.push(appObj)
+        } else {
+            systemBackend.endForegroundApp(appId)
         }
+    }
+
+    function closeForegroundApp() {
+        var appId = stack.currentItem ? stack.currentItem.objectName : ""
+        if (stack.depth > 1) stack.pop()
+        if (appId.length) systemBackend.endForegroundApp(appId)
     }
 
     function launchMindustryDirect() {
@@ -280,7 +296,7 @@ ApplicationWindow {
             anchors { left: parent.left; right: parent.right; top: parent.top }
             z: 1000
             onExitRequested: {
-                if (stack.depth > 1) stack.pop()
+                window.closeForegroundApp()
             }
         }
 
@@ -308,7 +324,7 @@ ApplicationWindow {
             Keys.onEscapePressed: {
                 if (passwordDialog.visible) passwordDialog.close()
                 else if (ethernetDialog.visible) ethernetDialog.close()
-                else if (stack.depth > 1) stack.pop()
+                else if (stack.depth > 1) window.closeForegroundApp()
             }
 
             Component.onCompleted: {
@@ -338,7 +354,7 @@ ApplicationWindow {
             }
             onReleased: {
                 if (swiping && (mouse.x - startX) > 60) {
-                    stack.pop()
+                    window.closeForegroundApp()
                 }
                 swiping = false
             }
@@ -482,8 +498,8 @@ ApplicationWindow {
         id: touchTestComponent
         TouchTestApp {
             objectName: "touch-test"
-            onExitRequested: stack.pop()
-            onBackRequested: stack.pop()
+            onExitRequested: window.closeForegroundApp()
+            onBackRequested: window.closeForegroundApp()
         }
     }
 
@@ -491,8 +507,8 @@ ApplicationWindow {
         id: reactionGameComponent
         ReactionGameApp {
             objectName: "reaction-game"
-            onExitRequested: stack.pop()
-            onBackRequested: stack.pop()
+            onExitRequested: window.closeForegroundApp()
+            onBackRequested: window.closeForegroundApp()
         }
     }
 
@@ -500,8 +516,8 @@ ApplicationWindow {
         id: fileManagerComponent
         FileManagerApp {
             objectName: "files"
-            onExitRequested: stack.pop()
-            onBackRequested: stack.pop()
+            onExitRequested: window.closeForegroundApp()
+            onBackRequested: window.closeForegroundApp()
         }
     }
 
@@ -509,8 +525,8 @@ ApplicationWindow {
         id: settingsComponent
         SettingsApp {
             objectName: "settings"
-            onExitRequested: stack.pop()
-            onBackRequested: stack.pop()
+            onExitRequested: window.closeForegroundApp()
+            onBackRequested: window.closeForegroundApp()
         }
     }
 

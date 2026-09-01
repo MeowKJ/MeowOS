@@ -14,6 +14,7 @@
 #include <future>
 
 #include "runtime/task_scheduler.h"
+#include "runtime/app_session_supervisor.h"
 #include "runtime/runtime_snapshot.h"
 
 class SystemBackend final : public QObject
@@ -114,6 +115,8 @@ class SystemBackend final : public QObject
     Q_PROPERTY(int schedulerSubmittedTasks READ schedulerSubmittedTasks NOTIFY schedulerChanged)
     Q_PROPERTY(int schedulerRejectedTasks READ schedulerRejectedTasks NOTIFY schedulerChanged)
     Q_PROPERTY(int schedulerPeakPendingTasks READ schedulerPeakPendingTasks NOTIFY schedulerChanged)
+    Q_PROPERTY(QString foregroundApp READ foregroundApp NOTIFY sessionChanged)
+    Q_PROPERTY(bool foregroundAppActive READ foregroundAppActive NOTIFY sessionChanged)
 
 public:
     explicit SystemBackend(QObject *parent = nullptr);
@@ -207,6 +210,10 @@ public:
     int schedulerSubmittedTasks() const;
     int schedulerRejectedTasks() const;
     int schedulerPeakPendingTasks() const;
+    QString foregroundApp() const;
+    bool foregroundAppActive() const;
+    Q_INVOKABLE bool beginForegroundApp(const QString &appId);
+    Q_INVOKABLE bool endForegroundApp(const QString &appId = QString());
     bool isScreenSleeping() const;
     int sleepTimeoutSeconds() const;
     int sleepTimeoutIndex() const;
@@ -269,6 +276,7 @@ signals:
     void wakeLockActiveChanged();
     void performanceChanged();
     void schedulerChanged();
+    void sessionChanged();
     void inputActivity();
     void operationMessage(const QString &message, bool success);
 
@@ -377,6 +385,7 @@ private:
     QFutureWatcher<QVariantMap> m_previewWatcher;
     QFutureWatcher<QVariantMap> m_fileOperationWatcher;
     meow::TaskScheduler m_runtimeScheduler{2};
+    meow::AppSessionSupervisor m_sessionSupervisor;
     meow::RuntimeSnapshotStore m_runtimeSnapshotStore;
     std::uint64_t m_runtimeSequence = 0;
     std::future<void> m_mindustryLaunchFuture;
