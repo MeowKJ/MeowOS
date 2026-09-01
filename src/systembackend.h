@@ -380,7 +380,7 @@ private:
     bool m_storageRefreshPending = false;
     bool m_wifiScanRunning = false;
     bool m_wifiOperationRunning = false;
-    QFutureWatcher<QVariantMap> m_ethernetOperationWatcher;
+    bool m_ethernetOperationRunning = false;
     QFutureWatcher<QVariantMap> m_directoryWatcher;
     QFutureWatcher<QVariantMap> m_previewWatcher;
     QFutureWatcher<QVariantMap> m_fileOperationWatcher;

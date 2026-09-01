@@ -969,7 +969,7 @@ QString availableDestination(const QString &directory, const QString &name)
 } // namespace
 
 SystemBackend::SystemBackend(QObject *parent)
-    : QObject(parent), m_ethernetOperationWatcher(this)
+    : QObject(parent)
 {
     m_hardwareCapabilities = detectHardwareCapabilities(&m_boardProfile);
     QSettings calibration(QStringLiteral("Meow OS"), QStringLiteral("battery"));
@@ -1031,14 +1031,6 @@ SystemBackend::SystemBackend(QObject *parent)
         if (!brightness.open(QIODevice::WriteOnly | QIODevice::Text)) return;
         brightness.write(QByteArray::number(level));
         brightness.close();
-        refreshStatus();
-    });
-    connect(&m_ethernetOperationWatcher, &QFutureWatcher<QVariantMap>::finished, this, [this]() {
-        const QVariantMap result = m_ethernetOperationWatcher.result();
-        const bool ok = result.value(QStringLiteral("ok")).toBool();
-        m_ethernetOperationInterface.clear();
-        emit ethernetChanged();
-        emit operationMessage(result.value(QStringLiteral("message")).toString(), ok);
         refreshStatus();
     });
     connect(&m_directoryWatcher, &QFutureWatcher<QVariantMap>::finished, this, [this]() {
@@ -1127,7 +1119,7 @@ QString SystemBackend::wifiOperationSsid() const { return m_wifiOperationSsid; }
 QString SystemBackend::wifiScanError() const { return m_wifiScanError; }
 QVariantList SystemBackend::wifiNetworks() const { return m_wifiNetworks; }
 QVariantList SystemBackend::ethernetPorts() const { return m_ethernetPorts; }
-bool SystemBackend::ethernetOperating() const { return m_ethernetOperationWatcher.isRunning(); }
+bool SystemBackend::ethernetOperating() const { return m_ethernetOperationRunning; }
 QString SystemBackend::ethernetOperationInterface() const { return m_ethernetOperationInterface; }
 bool SystemBackend::batteryAvailable() const { return m_batteryAvailable; }
 int SystemBackend::batteryPercent() const { return m_batteryPercent; }
@@ -1798,22 +1790,56 @@ void SystemBackend::configureEthernet(const QString &interfaceName, const QStrin
                                       const QString &method, const QString &address, int prefix,
                                       const QString &gateway, const QString &dns)
 {
-    if (m_ethernetOperationWatcher.isRunning()) return;
+    if (m_ethernetOperationRunning) return;
     m_ethernetOperationInterface = interfaceName;
+    m_ethernetOperationRunning = true;
     emit ethernetChanged();
-    m_ethernetOperationWatcher.setFuture(QtConcurrent::run([=]() {
-        return runEthernetConfiguration(interfaceName, connectionName, method,
-                                        address, prefix, gateway, dns);
-    }));
+    const bool accepted = m_runtimeScheduler.trySubmit(meow::TaskPriority::Interactive, [this, interfaceName, connectionName, method, address, prefix, gateway, dns]() {
+        const QVariantMap result = runEthernetConfiguration(interfaceName, connectionName, method, address, prefix, gateway, dns);
+        QMetaObject::invokeMethod(this, [this, result]() {
+            const bool ok = result.value(QStringLiteral("ok")).toBool();
+            m_ethernetOperationRunning = false;
+            m_ethernetOperationInterface.clear();
+            emit ethernetChanged();
+            emit schedulerChanged();
+            emit operationMessage(result.value(QStringLiteral("message")).toString(), ok);
+            refreshStatus();
+        }, Qt::QueuedConnection);
+    });
+    if (!accepted) {
+        m_ethernetOperationRunning = false;
+        m_ethernetOperationInterface.clear();
+        emit ethernetChanged();
+        emit operationMessage(QStringLiteral("系统忙，请稍后重试"), false);
+    }
+    emit schedulerChanged();
 }
 
 void SystemBackend::setEthernetConnected(const QString &interfaceName, bool connected)
 {
-    if (m_ethernetOperationWatcher.isRunning()) return;
+    if (m_ethernetOperationRunning) return;
     m_ethernetOperationInterface = interfaceName;
+    m_ethernetOperationRunning = true;
     emit ethernetChanged();
-    m_ethernetOperationWatcher.setFuture(QtConcurrent::run(runEthernetLinkOperation,
-                                                            interfaceName, connected));
+    const bool accepted = m_runtimeScheduler.trySubmit(meow::TaskPriority::Interactive, [this, interfaceName, connected]() {
+        const QVariantMap result = runEthernetLinkOperation(interfaceName, connected);
+        QMetaObject::invokeMethod(this, [this, result]() {
+            const bool ok = result.value(QStringLiteral("ok")).toBool();
+            m_ethernetOperationRunning = false;
+            m_ethernetOperationInterface.clear();
+            emit ethernetChanged();
+            emit schedulerChanged();
+            emit operationMessage(result.value(QStringLiteral("message")).toString(), ok);
+            refreshStatus();
+        }, Qt::QueuedConnection);
+    });
+    if (!accepted) {
+        m_ethernetOperationRunning = false;
+        m_ethernetOperationInterface.clear();
+        emit ethernetChanged();
+        emit operationMessage(QStringLiteral("系统忙，请稍后重试"), false);
+    }
+    emit schedulerChanged();
 }
 
 void SystemBackend::setVolume(int percent)

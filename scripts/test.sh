@@ -100,6 +100,8 @@ grep -q 'm_runtimeScheduler.trySubmit' src/systembackend.cpp
 ! grep -q 'QtConcurrent::run(collectStatus' src/systembackend.cpp
 ! grep -q 'QtConcurrent::run(collectWifiNetworks' src/systembackend.cpp
 ! grep -q 'QtConcurrent::run(runWifiOperation' src/systembackend.cpp
+! grep -q 'QtConcurrent::run(runEthernet' src/systembackend.cpp
+grep -q 'm_ethernetOperationRunning' src/systembackend.h
 grep -q 'collectStorageSnapshot' src/systembackend.cpp
 grep -q 'm_storageTaskRunning' src/systembackend.h
 grep -q 'cpuFrequencies' src/systembackend.h
