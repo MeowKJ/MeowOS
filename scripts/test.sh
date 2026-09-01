@@ -90,6 +90,8 @@ grep -q 'QT_QUICK_BACKEND' scripts/meow-display-launcher
 grep -q 'performanceHistory' src/systembackend.h
 grep -q 'schedulerPendingTasks' src/systembackend.h
 grep -q 'schedulerRunningTasks' src/systembackend.h
+grep -q 'schedulerRejectedTasks' src/systembackend.h
+grep -q 'schedulerPeakPendingTasks' src/systembackend.h
 grep -q 'cpuFrequencies' src/systembackend.h
 grep -q 'maximumFlickVelocity' qml/components/SettingsFlickable.qml
 grep -q 'pressDelay: 90' qml/components/SettingsFlickable.qml

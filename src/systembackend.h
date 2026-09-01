@@ -111,6 +111,9 @@ class SystemBackend final : public QObject
     Q_PROPERTY(int displayRotation READ displayRotation CONSTANT)
     Q_PROPERTY(int schedulerPendingTasks READ schedulerPendingTasks NOTIFY schedulerChanged)
     Q_PROPERTY(int schedulerRunningTasks READ schedulerRunningTasks NOTIFY schedulerChanged)
+    Q_PROPERTY(int schedulerSubmittedTasks READ schedulerSubmittedTasks NOTIFY schedulerChanged)
+    Q_PROPERTY(int schedulerRejectedTasks READ schedulerRejectedTasks NOTIFY schedulerChanged)
+    Q_PROPERTY(int schedulerPeakPendingTasks READ schedulerPeakPendingTasks NOTIFY schedulerChanged)
 
 public:
     explicit SystemBackend(QObject *parent = nullptr);
@@ -201,6 +204,9 @@ public:
     int displayRotation() const;
     int schedulerPendingTasks() const;
     int schedulerRunningTasks() const;
+    int schedulerSubmittedTasks() const;
+    int schedulerRejectedTasks() const;
+    int schedulerPeakPendingTasks() const;
     bool isScreenSleeping() const;
     int sleepTimeoutSeconds() const;
     int sleepTimeoutIndex() const;

@@ -53,6 +53,10 @@ creating unbounded memory pressure; callers can then coalesce telemetry or
 retry interactive work according to policy.
 The scheduler also exposes pending and running counts separately, allowing the
 RGB performance UI to distinguish queue pressure from active CPU work.
+The scheduler additionally records submitted, rejected and peak-pending counts.
+These counters are observable in the developer diagnostics surface, making
+back-pressure and wake-up behavior measurable on real hardware rather than
+treated as subjective “lag”.
 
 There is no thread-per-device rule. The worker count is bounded by available
 cores, and shutdown drains queued work before joining workers. Long-running

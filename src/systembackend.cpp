@@ -1157,6 +1157,21 @@ int SystemBackend::schedulerRunningTasks() const
     return static_cast<int>(m_runtimeScheduler.runningTasks());
 }
 
+int SystemBackend::schedulerSubmittedTasks() const
+{
+    return static_cast<int>(m_runtimeScheduler.stats().submitted);
+}
+
+int SystemBackend::schedulerRejectedTasks() const
+{
+    return static_cast<int>(m_runtimeScheduler.stats().rejected);
+}
+
+int SystemBackend::schedulerPeakPendingTasks() const
+{
+    return static_cast<int>(m_runtimeScheduler.stats().peakPending);
+}
+
 void SystemBackend::refresh()
 {
     refreshSystem();

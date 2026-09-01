@@ -3,6 +3,7 @@
 #include "app_session.h"
 
 #include <memory>
+#include <mutex>
 #include <string>
 
 namespace meow {
@@ -18,12 +19,12 @@ public:
     bool stop();
     bool fail();
     bool hasActiveSession() const;
-    const std::string &activeAppId() const;
+    std::string activeAppId() const;
     AppSessionState state() const;
 
 private:
+    mutable std::mutex mutex_;
     std::unique_ptr<AppSession> active_;
-    static const std::string emptyAppId_;
 };
 
 } // namespace meow

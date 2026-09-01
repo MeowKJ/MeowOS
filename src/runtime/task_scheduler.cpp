@@ -40,9 +40,22 @@ std::future<void> TaskScheduler::submit(TaskPriority priority, std::function<voi
             throw std::runtime_error("TaskScheduler queue is full");
         queue_.push(WorkItem{priority, nextSequence_.fetch_add(1),
                              [packaged]() { (*packaged)(); }});
+        submittedTasks_.fetch_add(1, std::memory_order_relaxed);
+        std::size_t peak = peakPendingTasks_.load(std::memory_order_relaxed);
+        while (queue_.size() > peak && !peakPendingTasks_.compare_exchange_weak(
+                   peak, queue_.size(), std::memory_order_relaxed)) {}
     }
     wakeup_.notify_one();
     return result;
+}
+
+bool TaskScheduler::trySubmit(TaskPriority priority, std::function<void()> task)
+{
+    try { (void)submit(priority, std::move(task)); return true; }
+    catch (const std::exception &) {
+        rejectedTasks_.fetch_add(1, std::memory_order_relaxed);
+        return false;
+    }
 }
 
 void TaskScheduler::shutdown()
@@ -96,8 +109,21 @@ void TaskScheduler::workerLoop()
             // A malformed direct WorkItem must not kill the worker or leave
             // the observability counter permanently elevated.
         }
+        completedTasks_.fetch_add(1, std::memory_order_relaxed);
         runningTasks_.fetch_sub(1, std::memory_order_acq_rel);
     }
+}
+
+SchedulerStats TaskScheduler::stats() const
+{
+    SchedulerStats value;
+    value.pending = pendingTasks();
+    value.running = runningTasks();
+    value.submitted = submittedTasks_.load(std::memory_order_relaxed);
+    value.completed = completedTasks_.load(std::memory_order_relaxed);
+    value.rejected = rejectedTasks_.load(std::memory_order_relaxed);
+    value.peakPending = peakPendingTasks_.load(std::memory_order_relaxed);
+    return value;
 }
 
 } // namespace meow

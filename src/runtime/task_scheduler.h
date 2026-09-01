@@ -20,6 +20,15 @@ enum class TaskPriority : std::uint8_t {
     Background = 2
 };
 
+struct SchedulerStats {
+    std::size_t pending = 0;
+    std::size_t running = 0;
+    std::size_t submitted = 0;
+    std::size_t completed = 0;
+    std::size_t rejected = 0;
+    std::size_t peakPending = 0;
+};
+
 // Small bounded-priority executor for the platform runtime. UI and input code
 // never runs here directly; they submit work and receive a future/event back.
 class TaskScheduler final {
@@ -32,10 +41,12 @@ public:
     TaskScheduler &operator=(const TaskScheduler &) = delete;
 
     std::future<void> submit(TaskPriority priority, std::function<void()> task);
+    bool trySubmit(TaskPriority priority, std::function<void()> task);
     void shutdown();
     std::size_t workerCount() const;
     std::size_t pendingTasks() const;
     std::size_t runningTasks() const;
+    SchedulerStats stats() const;
 
 private:
     struct WorkItem {
@@ -56,6 +67,10 @@ private:
     std::vector<std::thread> workers_;
     std::atomic<std::uint64_t> nextSequence_{0};
     std::atomic<std::size_t> runningTasks_{0};
+    std::atomic<std::size_t> submittedTasks_{0};
+    std::atomic<std::size_t> completedTasks_{0};
+    std::atomic<std::size_t> rejectedTasks_{0};
+    std::atomic<std::size_t> peakPendingTasks_{0};
     const std::size_t maxPendingTasks_;
     bool stopping_ = false;
 };

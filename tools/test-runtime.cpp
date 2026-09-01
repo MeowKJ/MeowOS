@@ -44,6 +44,7 @@ int main()
     assert(geometry.logicalWidth == 1280 && geometry.logicalHeight == 800);
     const meow::TouchPoint topLeft = meow::transformTouchPoint({0, 0}, 800, 1280, 90);
     assert(topLeft.x == 1279 && topLeft.y == 0);
+    (void)topLeft;
     MockDisplay display(geometry);
     MockInput input;
     assert(!input.start());
@@ -83,6 +84,9 @@ int main()
         job.get();
     assert(completed.load() == 32);
     assert(scheduler.runningTasks() == 0);
+    const meow::SchedulerStats schedulerStats = scheduler.stats();
+    assert(schedulerStats.submitted == 32 && schedulerStats.completed == 32);
+    (void)schedulerStats;
     scheduler.shutdown();
 
     meow::TaskScheduler bounded(1, 1);
@@ -98,6 +102,9 @@ int main()
         rejected = true;
     }
     assert(rejected);
+    assert(!bounded.trySubmit(meow::TaskPriority::Background, [] {}));
+    assert(bounded.stats().rejected >= 1);
+    (void)rejected;
     release.set_value();
     first.wait();
     bounded.shutdown();
@@ -145,5 +152,6 @@ int main()
     }
     writer.join();
     assert(snapshots.read()->sequence == 1000);
+    (void)lastSequence;
     return 0;
 }
