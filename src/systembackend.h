@@ -278,6 +278,7 @@ protected:
 private:
     void refreshSystem();
     void refreshStorage();
+    void applyStorageSnapshot(const QVariantMap &snapshot);
     void applyStatusSnapshot(const QVariantMap &snapshot);
 
     QString m_hostname;
@@ -367,6 +368,8 @@ private:
     QVariantList m_performanceHistory;
     bool m_cpuHavePrev = false;
     bool m_statusTaskRunning = false;
+    bool m_storageTaskRunning = false;
+    bool m_storageRefreshPending = false;
     bool m_wifiScanRunning = false;
     bool m_wifiOperationRunning = false;
     QFutureWatcher<QVariantMap> m_ethernetOperationWatcher;

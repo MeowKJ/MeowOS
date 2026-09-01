@@ -96,6 +96,8 @@ grep -q 'm_runtimeScheduler.trySubmit' src/systembackend.cpp
 ! grep -q 'QtConcurrent::run(collectStatus' src/systembackend.cpp
 ! grep -q 'QtConcurrent::run(collectWifiNetworks' src/systembackend.cpp
 ! grep -q 'QtConcurrent::run(runWifiOperation' src/systembackend.cpp
+grep -q 'collectStorageSnapshot' src/systembackend.cpp
+grep -q 'm_storageTaskRunning' src/systembackend.h
 grep -q 'cpuFrequencies' src/systembackend.h
 grep -q 'maximumFlickVelocity' qml/components/SettingsFlickable.qml
 grep -q 'pressDelay: 90' qml/components/SettingsFlickable.qml

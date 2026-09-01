@@ -35,6 +35,8 @@
 
 namespace {
 
+QString formatBytes(qint64 bytes);
+
 QString readTextFile(const QString &path)
 {
     QFile file(path);
@@ -109,6 +111,67 @@ bool readInteger(const QString &path, qint64 *value)
     const qint64 parsed = readTextFile(path).toLongLong(&ok);
     if (ok) *value = parsed;
     return ok;
+}
+
+QVariantMap collectStorageSnapshot()
+{
+    QVariantMap result;
+    QStorageInfo storage(QStringLiteral("/"));
+    storage.refresh();
+    if (!storage.isValid() || !storage.isReady() || storage.bytesTotal() <= 0) return result;
+    const qint64 used = storage.bytesTotal() - storage.bytesAvailable();
+    result.insert(QStringLiteral("diskUsed"), formatBytes(used));
+    result.insert(QStringLiteral("diskTotal"), formatBytes(storage.bytesTotal()));
+    result.insert(QStringLiteral("diskPercent"), qBound(0, static_cast<int>(100.0 * used / storage.bytesTotal()), 100));
+
+    bool nvmeAvailable = false;
+    bool nvmeMounted = false;
+    QString nvmeModel;
+    QString nvmeMountPoint;
+    QString nvmeUsed;
+    QString nvmeTotal;
+    int nvmePercent = 0;
+    QStorageInfo dataStorage(QStringLiteral("/data"));
+    if (dataStorage.isValid() && dataStorage.isReady() && dataStorage.bytesTotal() > 0) {
+        nvmeMounted = true;
+        nvmeMountPoint = QStringLiteral("/data");
+        nvmeUsed = formatBytes(dataStorage.bytesTotal() - dataStorage.bytesAvailable());
+        nvmeTotal = formatBytes(dataStorage.bytesTotal());
+        nvmePercent = qBound(0, static_cast<int>(100.0 * (dataStorage.bytesTotal() - dataStorage.bytesAvailable()) / dataStorage.bytesTotal()), 100);
+    }
+    QDir sysBlock(QStringLiteral("/sys/block"));
+    sysBlock.setNameFilters({QStringLiteral("nvme*n*")});
+    const QStringList nvmeDevices = sysBlock.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+    if (!nvmeDevices.isEmpty()) {
+        const QString deviceName = nvmeDevices.first();
+        const QString sysPath = sysBlock.absoluteFilePath(deviceName);
+        nvmeAvailable = true;
+        nvmeModel = readTextFile(sysPath + QStringLiteral("/device/model"));
+        qint64 sectors = 0;
+        if (readInteger(sysPath + QStringLiteral("/size"), &sectors) && sectors > 0)
+            nvmeTotal = formatBytes(sectors * 512);
+        const QString devicePrefix = QStringLiteral("/dev/") + deviceName;
+        for (QStorageInfo volume : QStorageInfo::mountedVolumes()) {
+            if (!QString::fromLocal8Bit(volume.device()).startsWith(devicePrefix)) continue;
+            volume.refresh();
+            if (!volume.isValid() || !volume.isReady() || volume.bytesTotal() <= 0) continue;
+            const qint64 nvmeBytesUsed = volume.bytesTotal() - volume.bytesAvailable();
+            nvmeMounted = true;
+            nvmeMountPoint = volume.rootPath();
+            nvmeUsed = formatBytes(nvmeBytesUsed);
+            nvmeTotal = formatBytes(volume.bytesTotal());
+            nvmePercent = qBound(0, static_cast<int>(100.0 * nvmeBytesUsed / volume.bytesTotal()), 100);
+            break;
+        }
+    }
+    result.insert(QStringLiteral("nvmeAvailable"), nvmeAvailable);
+    result.insert(QStringLiteral("nvmeMounted"), nvmeMounted);
+    result.insert(QStringLiteral("nvmeModel"), nvmeModel);
+    result.insert(QStringLiteral("nvmeMountPoint"), nvmeMountPoint);
+    result.insert(QStringLiteral("nvmeUsed"), nvmeUsed);
+    result.insert(QStringLiteral("nvmeTotal"), nvmeTotal);
+    result.insert(QStringLiteral("nvmePercent"), nvmePercent);
+    return result;
 }
 
 bool readI2cRegister(quint8 address, quint8 reg, quint8 *data, int length)
@@ -1438,75 +1501,55 @@ void SystemBackend::refreshSystem()
 
 void SystemBackend::refreshStorage()
 {
-    QStorageInfo storage(QStringLiteral("/"));
-    storage.refresh();
-    if (!storage.isValid() || !storage.isReady() || storage.bytesTotal() <= 0) return;
-    const qint64 used = storage.bytesTotal() - storage.bytesAvailable();
-    const QString diskUsed = formatBytes(used);
-    const QString diskTotal = formatBytes(storage.bytesTotal());
-    const int diskPercent = qBound(0, static_cast<int>(100.0 * used / storage.bytesTotal()), 100);
-    bool nvmeAvailable = false;
-    bool nvmeMounted = false;
-    QString nvmeModel;
-    QString nvmeMountPoint;
-    QString nvmeUsed;
-    QString nvmeTotal;
-    int nvmePercent = 0;
-
-    QStorageInfo dataStorage(QStringLiteral("/data"));
-    if (dataStorage.isValid() && dataStorage.isReady() && dataStorage.bytesTotal() > 0) {
-        nvmeMounted = true;
-        nvmeMountPoint = QStringLiteral("/data");
-        nvmeUsed = formatBytes(dataStorage.bytesTotal() - dataStorage.bytesAvailable());
-        nvmeTotal = formatBytes(dataStorage.bytesTotal());
-        nvmePercent = qBound(0, static_cast<int>(100.0 * (dataStorage.bytesTotal() - dataStorage.bytesAvailable()) / dataStorage.bytesTotal()), 100);
+    if (m_storageTaskRunning) {
+        m_storageRefreshPending = true;
+        return;
     }
+    m_storageTaskRunning = true;
+    const bool accepted = m_runtimeScheduler.trySubmit(meow::TaskPriority::Background, [this]() {
+        const QVariantMap snapshot = collectStorageSnapshot();
+        QMetaObject::invokeMethod(this, [this, snapshot]() {
+            m_storageTaskRunning = false;
+            applyStorageSnapshot(snapshot);
+            emit schedulerChanged();
+            if (m_storageRefreshPending) {
+                m_storageRefreshPending = false;
+                refreshStorage();
+            }
+        }, Qt::QueuedConnection);
+    });
+    if (!accepted) m_storageTaskRunning = false;
+    emit schedulerChanged();
+}
 
-    QDir sysBlock(QStringLiteral("/sys/block"));
-    sysBlock.setNameFilters({QStringLiteral("nvme*n*")});
-    const QStringList nvmeDevices = sysBlock.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
-    if (!nvmeDevices.isEmpty()) {
-        const QString deviceName = nvmeDevices.first();
-        const QString sysPath = sysBlock.absoluteFilePath(deviceName);
-        nvmeAvailable = true;
-        nvmeModel = readTextFile(sysPath + QStringLiteral("/device/model"));
-        qint64 sectors = 0;
-        if (readInteger(sysPath + QStringLiteral("/size"), &sectors) && sectors > 0) {
-            nvmeTotal = formatBytes(sectors * 512);
-        }
-
-        const QString devicePrefix = QStringLiteral("/dev/") + deviceName;
-        for (QStorageInfo volume : QStorageInfo::mountedVolumes()) {
-            const QString device = QString::fromLocal8Bit(volume.device());
-            if (!device.startsWith(devicePrefix)) continue;
-            volume.refresh();
-            if (!volume.isValid() || !volume.isReady() || volume.bytesTotal() <= 0) continue;
-            const qint64 nvmeBytesUsed = volume.bytesTotal() - volume.bytesAvailable();
-            nvmeMounted = true;
-            nvmeMountPoint = volume.rootPath();
-            nvmeUsed = formatBytes(nvmeBytesUsed);
-            nvmeTotal = formatBytes(volume.bytesTotal());
-            nvmePercent = qBound(0, static_cast<int>(100.0 * nvmeBytesUsed / volume.bytesTotal()), 100);
-            break;
-        }
-    }
-
-    if (diskUsed != m_diskUsed || diskTotal != m_diskTotal || diskPercent != m_diskPercent
-            || nvmeAvailable != m_nvmeAvailable || nvmeMounted != m_nvmeMounted
-            || nvmeModel != m_nvmeModel || nvmeMountPoint != m_nvmeMountPoint
-            || nvmeUsed != m_nvmeUsed || nvmeTotal != m_nvmeTotal || nvmePercent != m_nvmePercent) {
-        m_diskUsed = diskUsed;
-        m_diskTotal = diskTotal;
-        m_diskPercent = diskPercent;
-        m_nvmeAvailable = nvmeAvailable;
-        m_nvmeMounted = nvmeMounted;
-        m_nvmeModel = nvmeModel;
-        m_nvmeMountPoint = nvmeMountPoint;
-        m_nvmeUsed = nvmeUsed;
-        m_nvmeTotal = nvmeTotal;
-        m_nvmePercent = nvmePercent;
-        emit storageChanged();
-    }
+void SystemBackend::applyStorageSnapshot(const QVariantMap &snapshot)
+{
+    if (!snapshot.contains(QStringLiteral("diskTotal"))) return;
+    const QString diskUsed = snapshot.value(QStringLiteral("diskUsed")).toString();
+    const QString diskTotal = snapshot.value(QStringLiteral("diskTotal")).toString();
+    const int diskPercent = snapshot.value(QStringLiteral("diskPercent")).toInt();
+    const bool nvmeAvailable = snapshot.value(QStringLiteral("nvmeAvailable")).toBool();
+    const bool nvmeMounted = snapshot.value(QStringLiteral("nvmeMounted")).toBool();
+    const QString nvmeModel = snapshot.value(QStringLiteral("nvmeModel")).toString();
+    const QString nvmeMountPoint = snapshot.value(QStringLiteral("nvmeMountPoint")).toString();
+    const QString nvmeUsed = snapshot.value(QStringLiteral("nvmeUsed")).toString();
+    const QString nvmeTotal = snapshot.value(QStringLiteral("nvmeTotal")).toString();
+    const int nvmePercent = snapshot.value(QStringLiteral("nvmePercent")).toInt();
+    if (diskUsed == m_diskUsed && diskTotal == m_diskTotal && diskPercent == m_diskPercent
+            && nvmeAvailable == m_nvmeAvailable && nvmeMounted == m_nvmeMounted
+            && nvmeModel == m_nvmeModel && nvmeMountPoint == m_nvmeMountPoint
+            && nvmeUsed == m_nvmeUsed && nvmeTotal == m_nvmeTotal && nvmePercent == m_nvmePercent) return;
+    m_diskUsed = diskUsed;
+    m_diskTotal = diskTotal;
+    m_diskPercent = diskPercent;
+    m_nvmeAvailable = nvmeAvailable;
+    m_nvmeMounted = nvmeMounted;
+    m_nvmeModel = nvmeModel;
+    m_nvmeMountPoint = nvmeMountPoint;
+    m_nvmeUsed = nvmeUsed;
+    m_nvmeTotal = nvmeTotal;
+    m_nvmePercent = nvmePercent;
+    emit storageChanged();
 }
 
 void SystemBackend::applyStatusSnapshot(const QVariantMap &snapshot)
