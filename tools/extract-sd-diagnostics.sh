@@ -6,7 +6,11 @@ OUT="${2:-$PWD/meow-os-sd-diagnostics-$(date +%Y%m%d-%H%M%S)}"
 E2=${E2FSPROGS_DIR:-/opt/homebrew/opt/e2fsprogs/sbin}
 
 [ "$(id -u)" -eq 0 ] || { echo "Run with sudo to read the raw SD partition." >&2; exit 1; }
-[ -b "$DEV" ] || { echo "Root partition not found: $DEV" >&2; exit 1; }
+if [ ! -b "$DEV" ] && [ ! -c "$DEV" ]; then
+    echo "Root partition not found: $DEV" >&2
+    echo "The disk number may change after reinsertion; check: diskutil list external physical" >&2
+    exit 1
+fi
 [ -x "$E2/e2fsck" ] && [ -x "$E2/debugfs" ] || { echo "e2fsprogs not found: $E2" >&2; exit 1; }
 
 mkdir -p "$OUT/files" "$OUT/meow-logs" "$OUT/journal"
@@ -34,4 +38,3 @@ if [ -n "${SUDO_USER:-}" ]; then
     chown -R "$SUDO_USER":staff "$OUT" 2>/dev/null || true
 fi
 echo "Diagnostics extracted read-only to: $OUT"
-
