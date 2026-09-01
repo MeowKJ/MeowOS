@@ -77,6 +77,8 @@ printf '%s\n' "$VERSION_VALUE" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'
 grep -q 'Source changed but version is still' scripts/install-live.sh
 grep -q 'quality-gate.sh' scripts/install-live.sh
 grep -q 'MEOW_BUILD_JOBS' scripts/install-live.sh
+grep -q 'SuccessExitStatus=1 SIGTERM' systemd/meow-os.service
+grep -q 'performance_baseline=passed' scripts/verify-device.sh
 grep -Fq "sed 's/\\r\$//' scripts/meow-mindustry-launch.sh" scripts/install-live.sh
 grep -Fq "sed 's/\\r\$//' config/meow-mindustry-sudoers" scripts/install-live.sh
 test -x scripts/bump-version

@@ -23,11 +23,35 @@ QMAKE_BIN=$(command -v qmake || command -v qmake-qt5 || true)
 if [ -n "$QMAKE_BIN" ]; then
     printf '%s\n' '[qt] qmake build'
     "$QMAKE_BIN" meow-os.pro -o "$TMP_DIR/Makefile"
-    make -C "$TMP_DIR" -j"${MEOW_BUILD_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)}"
+    make -C "$TMP_DIR" -j"${MEOW_BUILD_JOBS:-2}"
     test -x "$TMP_DIR/meow-os"
     printf '%s\n' 'qt_build=passed'
 else
     printf '%s\n' 'qt_build=skipped (qmake unavailable)'
+fi
+
+if [ "${1:-}" = "--performance-baseline" ]; then
+    command -v systemctl >/dev/null 2>&1 || { printf '%s\n' 'systemd=unavailable' >&2; exit 1; }
+    pid=$(systemctl show -p MainPID --value meow-os.service)
+    [ -n "$pid" ] && [ "$pid" -gt 1 ] && [ -r "/proc/$pid/stat" ] || exit 1
+    hz=$(getconf CLK_TCK)
+    set -- $(awk '{print $14, $15}' "/proc/$pid/stat")
+    beforeTicks=$(( $1 + $2 ))
+    beforeCtx=$(awk '/voluntary_ctxt_switches|nonvoluntary_ctxt_switches/{sum+=$2} END{print sum+0}' "/proc/$pid/status")
+    sampleSeconds=${MEOW_PERF_SAMPLE_SECONDS:-30}
+    sleep "$sampleSeconds"
+    set -- $(awk '{print $14, $15}' "/proc/$pid/stat")
+    afterTicks=$(( $1 + $2 ))
+    afterCtx=$(awk '/voluntary_ctxt_switches|nonvoluntary_ctxt_switches/{sum+=$2} END{print sum+0}' "/proc/$pid/status")
+    cpu=$(awk -v delta=$((afterTicks-beforeTicks)) -v hz="$hz" -v seconds="$sampleSeconds" 'BEGIN{printf "%.2f",100*delta/(hz*seconds)}')
+    rssKb=$(awk '/VmRSS:/{print $2}' "/proc/$pid/status")
+    threads=$(awk '/Threads:/{print $2}' "/proc/$pid/status")
+    printf 'idle_cpu_percent=%s\nrss_kb=%s\nthreads=%s\ncontext_switches=%s\n' \
+        "$cpu" "$rssKb" "$threads" "$((afterCtx-beforeCtx))"
+    awk -v cpu="$cpu" 'BEGIN{exit !(cpu <= 3.0)}'
+    [ "$rssKb" -le 180000 ]
+    [ "$threads" -le 24 ]
+    printf '%s\n' 'performance_baseline=passed'
 fi
 
 if [ "${1:-}" = "--live" ]; then

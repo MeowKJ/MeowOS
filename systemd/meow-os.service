@@ -26,6 +26,7 @@ ExecStart=/opt/meow-os/bin/meow-display-launcher
 ExecStopPost=+/usr/bin/python3 /opt/meow-os/vt_mode.py text
 Restart=always
 RestartSec=2
+SuccessExitStatus=1 SIGTERM
 NoNewPrivileges=false
 StandardOutput=journal
 StandardError=journal
