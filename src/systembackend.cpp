@@ -906,8 +906,7 @@ QString availableDestination(const QString &directory, const QString &name)
 } // namespace
 
 SystemBackend::SystemBackend(QObject *parent)
-    : QObject(parent), m_statusWatcher(this), m_wifiScanWatcher(this), m_wifiOperationWatcher(this),
-      m_ethernetOperationWatcher(this)
+    : QObject(parent), m_ethernetOperationWatcher(this)
 {
     m_hardwareCapabilities = detectHardwareCapabilities(&m_boardProfile);
     QSettings calibration(QStringLiteral("Meow OS"), QStringLiteral("battery"));
@@ -970,30 +969,6 @@ SystemBackend::SystemBackend(QObject *parent)
         brightness.write(QByteArray::number(level));
         brightness.close();
         refreshStatus();
-    });
-    connect(&m_statusWatcher, &QFutureWatcher<QVariantMap>::finished, this, [this]() {
-        applyStatusSnapshot(m_statusWatcher.result());
-        if (m_statusRefreshPending) {
-            m_statusRefreshPending = false;
-            refreshStatus();
-        }
-    });
-    connect(&m_wifiScanWatcher, &QFutureWatcher<QVariantMap>::finished, this, [this]() {
-        const QVariantMap result = m_wifiScanWatcher.result();
-        m_wifiNetworks = result.value(QStringLiteral("networks")).toList();
-        m_wifiScanError = result.value(QStringLiteral("message")).toString();
-        emit wifiChanged();
-        refreshStatus();
-    });
-    connect(&m_wifiOperationWatcher, &QFutureWatcher<QVariantMap>::finished, this, [this]() {
-        const QVariantMap result = m_wifiOperationWatcher.result();
-        const bool ok = result.value(QStringLiteral("ok")).toBool();
-        m_wifiOperation.clear();
-        m_wifiOperationSsid.clear();
-        emit wifiChanged();
-        emit operationMessage(result.value(QStringLiteral("message")).toString(), ok);
-        refreshStatus();
-        scanWifi();
     });
     connect(&m_ethernetOperationWatcher, &QFutureWatcher<QVariantMap>::finished, this, [this]() {
         const QVariantMap result = m_ethernetOperationWatcher.result();
@@ -1082,8 +1057,8 @@ QString SystemBackend::wifiIpv4() const { return m_wifiIpv4; }
 QString SystemBackend::wifiGateway() const { return m_wifiGateway; }
 QString SystemBackend::wifiMac() const { return m_wifiMac; }
 QString SystemBackend::wifiDevice() const { return m_wifiDevice; }
-bool SystemBackend::wifiScanning() const { return m_wifiScanWatcher.isRunning(); }
-bool SystemBackend::wifiOperating() const { return m_wifiOperationWatcher.isRunning(); }
+bool SystemBackend::wifiScanning() const { return m_wifiScanRunning; }
+bool SystemBackend::wifiOperating() const { return m_wifiOperationRunning; }
 QString SystemBackend::wifiOperation() const { return m_wifiOperation; }
 QString SystemBackend::wifiOperationSsid() const { return m_wifiOperationSsid; }
 QString SystemBackend::wifiScanError() const { return m_wifiScanError; }
@@ -1182,11 +1157,36 @@ void SystemBackend::refresh()
 
 void SystemBackend::refreshStatus()
 {
-    if (m_statusWatcher.isRunning()) {
+    if (m_statusTaskRunning) {
         m_statusRefreshPending = true;
         return;
     }
-    m_statusWatcher.setFuture(QtConcurrent::run(collectStatus, m_activeScope));
+    m_statusTaskRunning = true;
+    const QString scope = m_activeScope;
+    const meow::TaskPriority priority = scope == QStringLiteral("idle")
+            ? meow::TaskPriority::Background : meow::TaskPriority::Interactive;
+    const bool accepted = m_runtimeScheduler.trySubmit(priority, [this, scope]() {
+        const QVariantMap snapshot = collectStatus(scope);
+        QMetaObject::invokeMethod(this, [this, snapshot]() {
+            m_statusTaskRunning = false;
+            applyStatusSnapshot(snapshot);
+            emit schedulerChanged();
+            if (m_statusRefreshPending) {
+                m_statusRefreshPending = false;
+                refreshStatus();
+            }
+        }, Qt::QueuedConnection);
+    });
+    if (!accepted) {
+        m_statusTaskRunning = false;
+        m_statusRefreshPending = true;
+        QTimer::singleShot(120, this, [this]() {
+            if (!m_statusRefreshPending) return;
+            m_statusRefreshPending = false;
+            refreshStatus();
+        });
+    }
+    emit schedulerChanged();
 }
 
 void SystemBackend::setActiveScope(const QString &scope)
@@ -1196,7 +1196,7 @@ void SystemBackend::setActiveScope(const QString &scope)
     if (scope == QLatin1String("performance")) {
         refreshPerformance();
     }
-    if (!m_statusWatcher.isRunning()) refreshStatus();
+    if (!m_statusTaskRunning) refreshStatus();
 }
 
 qint64 SystemBackend::idleMs() const
@@ -1637,32 +1637,90 @@ void SystemBackend::applyStatusSnapshot(const QVariantMap &snapshot)
 
 void SystemBackend::scanWifi()
 {
-    if (m_wifiScanWatcher.isRunning()) return;
+    if (m_wifiScanRunning) return;
     if (!m_wifiScanError.isEmpty()) {
         m_wifiScanError.clear();
         emit wifiChanged();
     }
-    m_wifiScanWatcher.setFuture(QtConcurrent::run(collectWifiNetworks));
+    m_wifiScanRunning = true;
+    const bool accepted = m_runtimeScheduler.trySubmit(meow::TaskPriority::Interactive, [this]() {
+        const QVariantMap result = collectWifiNetworks();
+        QMetaObject::invokeMethod(this, [this, result]() {
+            m_wifiScanRunning = false;
+            m_wifiNetworks = result.value(QStringLiteral("networks")).toList();
+            m_wifiScanError = result.value(QStringLiteral("message")).toString();
+            emit wifiChanged();
+            emit schedulerChanged();
+            refreshStatus();
+        }, Qt::QueuedConnection);
+    });
+    if (!accepted) {
+        m_wifiScanRunning = false;
+        m_wifiScanError = QStringLiteral("系统忙，请稍后重试");
+    }
     emit wifiChanged();
+    emit schedulerChanged();
 }
 
 void SystemBackend::connectWifi(const QString &ssid, const QString &password)
 {
-    if (!m_wifiOperationWatcher.isRunning()) {
+    if (!m_wifiOperationRunning) {
         m_wifiOperation = QStringLiteral("connect");
         m_wifiOperationSsid = ssid;
-        m_wifiOperationWatcher.setFuture(QtConcurrent::run(runWifiOperation, QStringLiteral("connect"), ssid, password));
+        m_wifiOperationRunning = true;
+        const bool accepted = m_runtimeScheduler.trySubmit(meow::TaskPriority::Interactive, [this, ssid, password]() {
+            const QVariantMap result = runWifiOperation(QStringLiteral("connect"), ssid, password);
+            QMetaObject::invokeMethod(this, [this, result]() {
+                const bool ok = result.value(QStringLiteral("ok")).toBool();
+                m_wifiOperationRunning = false;
+                m_wifiOperation.clear();
+                m_wifiOperationSsid.clear();
+                emit wifiChanged();
+                emit schedulerChanged();
+                emit operationMessage(result.value(QStringLiteral("message")).toString(), ok);
+                refreshStatus();
+                scanWifi();
+            }, Qt::QueuedConnection);
+        });
+        if (!accepted) {
+            m_wifiOperationRunning = false;
+            m_wifiOperation.clear();
+            m_wifiOperationSsid.clear();
+            emit operationMessage(QStringLiteral("系统忙，请稍后重试"), false);
+        }
         emit wifiChanged();
+        emit schedulerChanged();
     }
 }
 
 void SystemBackend::forgetWifi(const QString &ssid)
 {
-    if (!m_wifiOperationWatcher.isRunning()) {
+    if (!m_wifiOperationRunning) {
         m_wifiOperation = QStringLiteral("forget");
         m_wifiOperationSsid = ssid;
-        m_wifiOperationWatcher.setFuture(QtConcurrent::run(runWifiOperation, QStringLiteral("forget"), ssid, QString()));
+        m_wifiOperationRunning = true;
+        const bool accepted = m_runtimeScheduler.trySubmit(meow::TaskPriority::Interactive, [this, ssid]() {
+            const QVariantMap result = runWifiOperation(QStringLiteral("forget"), ssid, QString());
+            QMetaObject::invokeMethod(this, [this, result]() {
+                const bool ok = result.value(QStringLiteral("ok")).toBool();
+                m_wifiOperationRunning = false;
+                m_wifiOperation.clear();
+                m_wifiOperationSsid.clear();
+                emit wifiChanged();
+                emit schedulerChanged();
+                emit operationMessage(result.value(QStringLiteral("message")).toString(), ok);
+                refreshStatus();
+                scanWifi();
+            }, Qt::QueuedConnection);
+        });
+        if (!accepted) {
+            m_wifiOperationRunning = false;
+            m_wifiOperation.clear();
+            m_wifiOperationSsid.clear();
+            emit operationMessage(QStringLiteral("系统忙，请稍后重试"), false);
+        }
         emit wifiChanged();
+        emit schedulerChanged();
     }
 }
 

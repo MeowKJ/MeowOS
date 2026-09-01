@@ -366,9 +366,9 @@ private:
     QVector<quint64> m_cpuPrevTotal;
     QVariantList m_performanceHistory;
     bool m_cpuHavePrev = false;
-    QFutureWatcher<QVariantMap> m_statusWatcher;
-    QFutureWatcher<QVariantMap> m_wifiScanWatcher;
-    QFutureWatcher<QVariantMap> m_wifiOperationWatcher;
+    bool m_statusTaskRunning = false;
+    bool m_wifiScanRunning = false;
+    bool m_wifiOperationRunning = false;
     QFutureWatcher<QVariantMap> m_ethernetOperationWatcher;
     QFutureWatcher<QVariantMap> m_directoryWatcher;
     QFutureWatcher<QVariantMap> m_previewWatcher;
