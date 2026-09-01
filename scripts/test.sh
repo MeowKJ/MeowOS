@@ -108,6 +108,8 @@ grep -q 'PerformanceCpuCard' qml/apps/SettingsApp.qml
 grep -q 'PerformanceRamGpuCard' qml/apps/SettingsApp.qml
 grep -q 'PerformanceCoreMatrix' qml/apps/SettingsApp.qml
 grep -q 'StatusPill' qml/components/qmldir
+grep -q 'singleton DesignTokens' qml/components/qmldir
+grep -q 'DesignTokens.surface' qml/components/PerformanceCpuCard.qml
 grep -q '负载过高' qml/components/PerformanceCpuCard.qml
 grep -q '后台队列' qml/components/PerformanceCpuCard.qml
 grep -q 'IosSwitch' qml/components/qmldir

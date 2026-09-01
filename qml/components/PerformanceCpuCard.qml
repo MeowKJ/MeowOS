@@ -11,13 +11,16 @@ Rectangle {
     property real temperatureC: 0
     property int schedulerPendingTasks: 0
     property int schedulerRunningTasks: 0
+    property int schedulerSubmittedTasks: 0
+    property int schedulerRejectedTasks: 0
+    property int schedulerPeakPendingTasks: 0
 
     implicitWidth: 400
     implicitHeight: 236
     height: 236
     radius: 22
-    color: "#F8F7FF"
-    border.color: "#E0DBFC"
+    color: DesignTokens.surface
+    border.color: DesignTokens.border
     border.width: 1
 
     Column {
@@ -34,7 +37,7 @@ Rectangle {
                 spacing: 10
                 Rectangle {
                     width: 40; height: 40; radius: 12
-                    color: "#6366F1"
+                    color: DesignTokens.accent
                     anchors.verticalCenter: parent.verticalCenter
                     Image {
                         anchors.centerIn: parent; width: 22; height: 22
@@ -47,14 +50,14 @@ Rectangle {
                     spacing: 1
                     Text {
                         text: "中央处理器 (CPU)"
-                        color: "#1E1B4B"
+                        color: DesignTokens.textPrimary
                         font.family: "Noto Sans CJK SC"
                         font.pixelSize: 16
                         font.weight: Font.Bold
                     }
                     Text {
                         text: cpuCardRoot.logicalCoreCount > 0 ? cpuCardRoot.logicalCoreCount + " 逻辑核心 · 动态负载" : "读取中…"
-                        color: "#6B7280"
+                        color: DesignTokens.textSecondary
                         font.family: "Noto Sans CJK SC"
                         font.pixelSize: 12
                     }
@@ -62,7 +65,7 @@ Rectangle {
             }
             Text {
                 text: cpuCardRoot.cpuTotal >= 0 ? cpuCardRoot.cpuTotal + "%" : "--"
-                color: "#4F46E5"
+                color: DesignTokens.accentStrong
                 font.family: "Noto Sans CJK SC"
                 font.pixelSize: 38
                 font.weight: Font.Bold
@@ -149,14 +152,14 @@ Rectangle {
             width: parent.width
             Text {
                 text: "当前频率: " + (cpuCardRoot.frequencyMhz > 0 ? cpuCardRoot.frequencyMhz + " MHz" : "--")
-                color: "#6B7280"
+                color: DesignTokens.textSecondary
                 font.family: "Noto Sans CJK SC"
                 font.pixelSize: 12
                 Layout.fillWidth: true
             }
             Text {
                 text: "最高: " + (cpuCardRoot.maxFrequencyMhz > 0 ? cpuCardRoot.maxFrequencyMhz + " MHz" : "--")
-                color: "#6B7280"
+                color: DesignTokens.textSecondary
                 font.family: "Noto Sans CJK SC"
                 font.pixelSize: 12
                 Layout.fillWidth: true
@@ -164,7 +167,7 @@ Rectangle {
             }
             Text {
                 text: "温度: " + (cpuCardRoot.temperatureC > -100 ? cpuCardRoot.temperatureC.toFixed(0) + "°C" : "--")
-                color: cpuCardRoot.temperatureC >= 80 ? "#EF4444" : "#10B981"
+                color: cpuCardRoot.temperatureC >= 80 ? DesignTokens.danger : DesignTokens.success
                 font.family: "Noto Sans CJK SC"
                 font.pixelSize: 12
                 font.weight: Font.DemiBold

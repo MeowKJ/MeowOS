@@ -1,4 +1,5 @@
 module components
+singleton DesignTokens 1.0 DesignTokens.qml
 StatusBar 1.0 StatusBar.qml
 AppHeader 1.0 AppHeader.qml
 CompactBackButton 1.0 CompactBackButton.qml

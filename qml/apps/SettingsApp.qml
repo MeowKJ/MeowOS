@@ -1186,6 +1186,9 @@ Rectangle {
                             temperatureC: systemBackend.cpuTemperatureC
                             schedulerPendingTasks: systemBackend.schedulerPendingTasks
                             schedulerRunningTasks: systemBackend.schedulerRunningTasks
+                            schedulerSubmittedTasks: systemBackend.schedulerSubmittedTasks
+                            schedulerRejectedTasks: systemBackend.schedulerRejectedTasks
+                            schedulerPeakPendingTasks: systemBackend.schedulerPeakPendingTasks
                         }
 
                         PerformanceRamGpuCard {
