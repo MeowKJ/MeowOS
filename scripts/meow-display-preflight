@@ -1,0 +1,28 @@
+#!/bin/sh
+set -eu
+
+# Release DRM master before Qt EGLFS starts.  This is deliberately limited to
+# the processes owned by Meow OS/Mindustry; it never kills an unrelated X
+# server or compositor.
+for name in meow-os Xorg; do
+    if pgrep -x "$name" >/dev/null 2>&1; then
+        pkill -TERM -x "$name" 2>/dev/null || true
+        i=0
+        while pgrep -x "$name" >/dev/null 2>&1 && [ "$i" -lt 20 ]; do
+            i=$((i + 1))
+            sleep 0.1
+        done
+        pkill -KILL -x "$name" 2>/dev/null || true
+    fi
+done
+
+# A previous X11 game session can leave the lock/socket behind after power
+# loss.  Removing only these known temporary paths is safe and idempotent.
+rm -f /tmp/.X0-lock /tmp/.X11-unix/X0
+
+# Switch the kernel VT back to graphics mode and give the DRM driver a short
+# settling window.  Failure is non-fatal on headless/HDMI-only variants.
+/usr/bin/chvt 1 2>/dev/null || true
+/usr/bin/python3 /opt/meow-os/vt_mode.py graphics 2>/dev/null || true
+sleep 0.25
+

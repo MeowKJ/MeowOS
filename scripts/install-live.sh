@@ -91,6 +91,7 @@ if [ -f /tmp/gl4es/lib/libGL.so.1 ]; then
 fi
 install -m 0755 scripts/meow-backlight-permissions /opt/meow-os/bin/meow-backlight-permissions
 install -m 0755 scripts/meow-wait-display /opt/meow-os/bin/meow-wait-display
+sed 's/\r$//' scripts/meow-display-preflight > /tmp/meow-display-preflight && install -m 0755 /tmp/meow-display-preflight /opt/meow-os/bin/meow-display-preflight
 sed 's/\r$//' scripts/meow-console-recovery > /tmp/meow-console-recovery && install -m 0755 /tmp/meow-console-recovery /opt/meow-os/bin/meow-console-recovery
 sed 's/\r$//' scripts/meow-log-snapshot > /tmp/meow-log-snapshot && install -m 0755 /tmp/meow-log-snapshot /opt/meow-os/bin/meow-log-snapshot
 install -m 0755 scripts/configure-boot-branding /opt/meow-os/bin/configure-boot-branding

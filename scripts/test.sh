@@ -5,7 +5,7 @@ ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT_DIR"
 
 printf '%s\n' '[1/5] shell syntax'
-sh -n scripts/install-live.sh scripts/mount-nvme-data scripts/meow-display-launcher scripts/meow-wait-display scripts/meow-console-recovery scripts/meow-log-snapshot scripts/configure-boot-branding scripts/install-early-splash scripts/meow-mindustry-launch.sh scripts/verify-device.sh scripts/build-runtime.sh tools/extract-sd-diagnostics.sh
+sh -n scripts/install-live.sh scripts/mount-nvme-data scripts/meow-display-launcher scripts/meow-wait-display scripts/meow-display-preflight scripts/meow-console-recovery scripts/meow-log-snapshot scripts/configure-boot-branding scripts/install-early-splash scripts/meow-mindustry-launch.sh scripts/verify-device.sh scripts/build-runtime.sh tools/extract-sd-diagnostics.sh
 
 printf '%s\n' '[2/5] required deployment files'
 for file in scripts/mount-nvme-data systemd/meow-nvme-mount@.service udev/90-meow-nvme-data.rules; do
@@ -18,6 +18,8 @@ grep -q 'Storage=persistent' config/journald-meow-os.conf
 grep -q 'SystemMaxUse=128M' config/journald-meow-os.conf
 grep -q 'meow-diagnostic-capture@%n.service' systemd/meow-os.service
 grep -q 'systemctl enable meow-boot-log.service' scripts/install-live.sh
+grep -q 'meow-display-preflight' scripts/install-live.sh
+grep -q 'meow-display-preflight' systemd/meow-os.service
 test -f config/hardware-profiles/a5e.env
 test -f config/hardware-profiles/a733-generic.env
 test -f systemd/meow-mindustry.service

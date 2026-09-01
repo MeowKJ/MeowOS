@@ -19,6 +19,7 @@ Environment=XDG_RUNTIME_DIR=/run/meow-os
 EnvironmentFile=-/etc/meow-os/display.conf
 ExecStartPre=+/opt/meow-os/bin/meow-backlight-permissions
 ExecStartPre=+/opt/meow-os/bin/meow-wait-display
+ExecStartPre=+/opt/meow-os/bin/meow-display-preflight
 ExecStartPre=-+/usr/bin/plymouth quit --retain-splash
 ExecStartPre=+/usr/bin/python3 /opt/meow-os/vt_mode.py graphics
 ExecStart=/opt/meow-os/bin/meow-display-launcher
