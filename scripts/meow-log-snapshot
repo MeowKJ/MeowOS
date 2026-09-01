@@ -1,0 +1,89 @@
+#!/bin/sh
+set -eu
+
+MODE="${1:-manual}"
+UNIT="${2:-meow-os.service}"
+ROOT=/var/log/meow-os
+BOOT_ID=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo unknown)
+STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+
+safe_name() {
+    printf '%s' "$1" | tr -c 'A-Za-z0-9_.@-' '_'
+}
+
+write_common() {
+    dir="$1"
+    {
+        printf 'captured_utc=%s\n' "$STAMP"
+        printf 'mode=%s\n' "$MODE"
+        printf 'boot_id=%s\n' "$BOOT_ID"
+        printf 'version='; sed -n 's/^VERSION=//p' /etc/meow-os-release 2>/dev/null || true
+        printf 'source_sha256='; cat /etc/meow-os/build.sha256 2>/dev/null || true
+        printf 'kernel='; uname -a
+        printf 'cmdline='; cat /proc/cmdline 2>/dev/null || true; printf '\n'
+        printf 'uptime='; cat /proc/uptime 2>/dev/null || true; printf '\n'
+    } >"$dir/metadata.txt"
+    dmesg --ctime >"$dir/kernel.log" 2>&1 || dmesg >"$dir/kernel.log" 2>&1 || true
+    journalctl -b --no-pager -o short-precise >"$dir/journal.log" 2>&1 || true
+    systemctl --failed --no-pager >"$dir/failed-units.txt" 2>&1 || true
+    systemctl status meow-os.service meow-mindustry.service --no-pager -l \
+        >"$dir/meow-services.txt" 2>&1 || true
+    {
+        printf '%s\n' '--- DRM ---'
+        find /sys/class/drm -maxdepth 2 -type f \( -name status -o -name modes \) -print -exec cat {} \; 2>/dev/null || true
+        printf '%s\n' '--- INPUT ---'
+        cat /proc/bus/input/devices 2>/dev/null || true
+        printf '%s\n' '--- STORAGE ---'
+        lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINTS,MODEL 2>/dev/null || true
+    } >"$dir/hardware.txt"
+}
+
+mkdir -p "$ROOT/boots" "$ROOT/failures" "$ROOT/pstore"
+chmod 0755 "$ROOT" "$ROOT/boots" "$ROOT/failures" "$ROOT/pstore"
+
+# Preserve firmware/kernel panic records exposed by ramoops or EFI pstore.
+if [ -d /sys/fs/pstore ]; then
+    for file in /sys/fs/pstore/*; do
+        [ -f "$file" ] || continue
+        cp -p "$file" "$ROOT/pstore/${STAMP}-$(basename "$file")" 2>/dev/null || true
+    done
+fi
+if [ -d /var/lib/systemd/pstore ]; then
+    for file in /var/lib/systemd/pstore/*; do
+        [ -f "$file" ] || continue
+        cp -p "$file" "$ROOT/pstore/${STAMP}-$(basename "$file")" 2>/dev/null || true
+    done
+fi
+
+case "$MODE" in
+    boot)
+        DEST="$ROOT/boots/$BOOT_ID"
+        mkdir -p "$DEST"
+        write_common "$DEST"
+        ln -sfn "boots/$BOOT_ID" "$ROOT/latest"
+        # Keep the eight newest full boot snapshots. Persistent journal keeps
+        # the longer 30-day history within its own bounded quota.
+        find "$ROOT/boots" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' 2>/dev/null \
+            | sort -nr | sed -n '9,$p' | cut -d' ' -f2- | xargs -r rm -rf --
+        ;;
+    failure)
+        NAME=$(safe_name "$UNIT")
+        DEST="$ROOT/failures/${STAMP}-${NAME}"
+        mkdir -p "$DEST"
+        write_common "$DEST"
+        systemctl status "$UNIT" --no-pager -l >"$DEST/unit-status.txt" 2>&1 || true
+        journalctl -b -u "$UNIT" --no-pager -o short-precise >"$DEST/unit-journal.log" 2>&1 || true
+        ln -sfn "failures/$(basename "$DEST")" "$ROOT/latest-failure"
+        find "$ROOT/failures" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' 2>/dev/null \
+            | sort -nr | sed -n '21,$p' | cut -d' ' -f2- | xargs -r rm -rf --
+        ;;
+    shutdown|manual)
+        DEST="$ROOT/boots/$BOOT_ID"
+        mkdir -p "$DEST"
+        write_common "$DEST"
+        ;;
+    *)
+        echo "usage: meow-log-snapshot boot|shutdown|manual|failure [unit]" >&2
+        exit 2
+        ;;
+esac

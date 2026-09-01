@@ -77,7 +77,8 @@ fi
 qmake meow-os.pro -o Makefile
 make -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)"
 
-install -d -m 0755 /opt/meow-os/bin /opt/meow-os/assets/sounds /opt/meow-os/share/early-splash/theme /opt/meow-os/share/early-splash/assets /etc/meow-os /etc/systemd/system /etc/polkit-1/rules.d /etc/polkit-1/localauthority/50-local.d /etc/udev/rules.d
+install -d -m 0755 /opt/meow-os/bin /opt/meow-os/assets/sounds /opt/meow-os/share/early-splash/theme /opt/meow-os/share/early-splash/assets /etc/meow-os /etc/systemd/system /etc/systemd/journald.conf.d /etc/polkit-1/rules.d /etc/polkit-1/localauthority/50-local.d /etc/udev/rules.d /var/log/meow-os
+install -d -m 2755 -o root -g systemd-journal /var/log/journal
 install -m 0755 meow-os /opt/meow-os/meow-os
 install -m 0755 scripts/mount-nvme-data /opt/meow-os/bin/mount-nvme-data
 install -m 0644 assets/sounds/volume-meow.wav /opt/meow-os/assets/sounds/volume-meow.wav
@@ -91,6 +92,7 @@ fi
 install -m 0755 scripts/meow-backlight-permissions /opt/meow-os/bin/meow-backlight-permissions
 install -m 0755 scripts/meow-wait-display /opt/meow-os/bin/meow-wait-display
 sed 's/\r$//' scripts/meow-console-recovery > /tmp/meow-console-recovery && install -m 0755 /tmp/meow-console-recovery /opt/meow-os/bin/meow-console-recovery
+sed 's/\r$//' scripts/meow-log-snapshot > /tmp/meow-log-snapshot && install -m 0755 /tmp/meow-log-snapshot /opt/meow-os/bin/meow-log-snapshot
 install -m 0755 scripts/configure-boot-branding /opt/meow-os/bin/configure-boot-branding
 install -m 0755 scripts/install-early-splash /opt/meow-os/bin/install-early-splash
 install -m 0644 plymouth/meow-os/meow-os.plymouth /opt/meow-os/share/early-splash/theme/meow-os.plymouth
@@ -105,11 +107,14 @@ sed 's/\r$//' systemd/meow-os.service > /tmp/meow-os.service && install -m 0644 
 sed 's/\r$//' systemd/meow-console-recovery.service > /tmp/meow-console-recovery.service && install -m 0644 /tmp/meow-console-recovery.service /etc/systemd/system/meow-console-recovery.service
 sed 's/\r$//' systemd/meow-mindustry.service > /tmp/meow-mindustry.service && install -m 0644 /tmp/meow-mindustry.service /etc/systemd/system/meow-mindustry.service
 sed 's/\r$//' config/meow-mindustry-sudoers > /tmp/meow-mindustry-sudoers && install -m 0440 /tmp/meow-mindustry-sudoers /etc/sudoers.d/meow-mindustry
+sed 's/\r$//' systemd/meow-boot-log.service > /tmp/meow-boot-log.service && install -m 0644 /tmp/meow-boot-log.service /etc/systemd/system/meow-boot-log.service
+sed 's/\r$//' systemd/meow-diagnostic-capture@.service > /tmp/meow-diagnostic-capture@.service && install -m 0644 /tmp/meow-diagnostic-capture@.service /etc/systemd/system/meow-diagnostic-capture@.service
 install -m 0644 systemd/meow-charge-enable.service /etc/systemd/system/meow-charge-enable.service
 install -m 0644 systemd/meow-nvme-mount@.service /etc/systemd/system/meow-nvme-mount@.service
 install -m 0644 config/display.conf /etc/meow-os/display.conf
 install -m 0644 config/eglfs-kms.json /opt/meow-os/eglfs-kms.json
 install -m 0644 config/asound.conf /etc/asound.conf
+install -m 0644 config/journald-meow-os.conf /etc/systemd/journald.conf.d/99-meow-os.conf
 install -m 0644 polkit/49-meow-os-network.rules /etc/polkit-1/rules.d/49-meow-os-network.rules
 install -m 0644 polkit/49-meow-os-network.pkla /etc/polkit-1/localauthority/50-local.d/49-meow-os-network.pkla
 rm -f /etc/polkit-1/rules.d/49-meow-os-mindustry.rules
@@ -134,8 +139,14 @@ printf '%s\n' "$SOURCE_HASH" > /etc/meow-os/build.sha256
 
 usermod -aG input,video,render,audio,i2c,netdev radxa
 systemctl daemon-reload
+systemctl restart systemd-journald.service
+journalctl --flush || true
 udevadm control --reload-rules
 systemctl enable meow-os.service
+systemctl enable meow-boot-log.service
+if systemctl list-unit-files systemd-pstore.service >/dev/null 2>&1; then
+    systemctl enable systemd-pstore.service || true
+fi
 systemctl enable meow-charge-enable.service
 /opt/meow-os/bin/configure-boot-branding
 for partition in /dev/nvme*n*p[0-9]; do

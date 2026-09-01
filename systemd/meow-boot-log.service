@@ -1,0 +1,16 @@
+[Unit]
+Description=Capture persistent Meow OS boot diagnostics
+After=local-fs.target systemd-journald.service
+Before=meow-os.service multi-user.target
+Wants=systemd-journald.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/meow-os/bin/meow-log-snapshot boot
+ExecStop=/opt/meow-os/bin/meow-log-snapshot shutdown
+RemainAfterExit=yes
+TimeoutStartSec=30s
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=multi-user.target

@@ -5,12 +5,19 @@ ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT_DIR"
 
 printf '%s\n' '[1/5] shell syntax'
-sh -n scripts/install-live.sh scripts/mount-nvme-data scripts/meow-display-launcher scripts/meow-wait-display scripts/meow-console-recovery scripts/configure-boot-branding scripts/install-early-splash scripts/meow-mindustry-launch.sh scripts/verify-device.sh scripts/build-runtime.sh
+sh -n scripts/install-live.sh scripts/mount-nvme-data scripts/meow-display-launcher scripts/meow-wait-display scripts/meow-console-recovery scripts/meow-log-snapshot scripts/configure-boot-branding scripts/install-early-splash scripts/meow-mindustry-launch.sh scripts/verify-device.sh scripts/build-runtime.sh tools/extract-sd-diagnostics.sh
 
 printf '%s\n' '[2/5] required deployment files'
 for file in scripts/mount-nvme-data systemd/meow-nvme-mount@.service udev/90-meow-nvme-data.rules; do
     test -f "$file"
 done
+for file in config/journald-meow-os.conf systemd/meow-boot-log.service systemd/meow-diagnostic-capture@.service scripts/meow-log-snapshot tools/extract-sd-diagnostics.sh; do
+    test -f "$file"
+done
+grep -q 'Storage=persistent' config/journald-meow-os.conf
+grep -q 'SystemMaxUse=128M' config/journald-meow-os.conf
+grep -q 'meow-diagnostic-capture@%n.service' systemd/meow-os.service
+grep -q 'systemctl enable meow-boot-log.service' scripts/install-live.sh
 test -f config/hardware-profiles/a5e.env
 test -f config/hardware-profiles/a733-generic.env
 test -f systemd/meow-mindustry.service
@@ -67,8 +74,8 @@ test "$VERSION_VALUE" = "$HEADER_VERSION"
 printf '%s\n' "$VERSION_VALUE" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'
 grep -q 'Source changed but version is still' scripts/install-live.sh
 grep -q 'quality-gate.sh' scripts/install-live.sh
-grep -q "sed 's/\\r\$//' scripts/meow-mindustry-launch.sh" scripts/install-live.sh
-grep -q "sed 's/\\r\$//' config/meow-mindustry-sudoers" scripts/install-live.sh
+grep -Fq "sed 's/\\r\$//' scripts/meow-mindustry-launch.sh" scripts/install-live.sh
+grep -Fq "sed 's/\\r\$//' config/meow-mindustry-sudoers" scripts/install-live.sh
 test -x scripts/bump-version
 test -x scripts/quality-gate.sh
 grep -q 'hardwareCapabilities' src/systembackend.h

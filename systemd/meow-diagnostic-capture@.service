@@ -1,0 +1,8 @@
+[Unit]
+Description=Capture diagnostics after %i failed
+After=systemd-journald.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/meow-os/bin/meow-log-snapshot failure %i
+TimeoutStartSec=30s

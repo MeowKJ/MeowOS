@@ -2,8 +2,10 @@
 Description=Meow OS Qt Quick shell
 After=systemd-modules-load.service systemd-udev-trigger.service
 Wants=meow-charge-enable.service
+Wants=meow-boot-log.service
+After=meow-boot-log.service
 Conflicts=getty@tty1.service
-OnFailure=meow-console-recovery.service
+OnFailure=meow-console-recovery.service meow-diagnostic-capture@%n.service
 StartLimitIntervalSec=30
 StartLimitBurst=3
 
@@ -24,6 +26,9 @@ ExecStopPost=+/usr/bin/python3 /opt/meow-os/vt_mode.py text
 Restart=always
 RestartSec=2
 NoNewPrivileges=false
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=meow-os
 
 [Install]
 WantedBy=multi-user.target

@@ -2,6 +2,7 @@
 Description=Mindustry game session for Meow OS
 Conflicts=meow-os.service
 After=systemd-user-sessions.service
+OnFailure=meow-diagnostic-capture@%n.service
 
 [Service]
 Type=simple
@@ -15,6 +16,9 @@ ExecStopPost=-/bin/systemctl start meow-os.service
 TimeoutStopSec=10s
 KillMode=control-group
 Restart=no
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=meow-mindustry
 
 [Install]
 WantedBy=multi-user.target
