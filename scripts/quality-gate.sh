@@ -43,7 +43,7 @@ grep -q 'sleepPowerLevel' src/systembackend.h && score_complete=$((score_complet
 grep -q 'keepScreenOnApps' src/systembackend.h && score_complete=$((score_complete + 5))
 
 grep -q 'settingsForeground' qml/Main.qml && score_optimize=$((score_optimize + 8))
-grep -q 'loader.asynchronous = false' qml/apps/SettingsApp.qml && score_optimize=$((score_optimize + 6))
+grep -q 'loader.asynchronous = !loader.item' qml/apps/SettingsApp.qml && score_optimize=$((score_optimize + 6))
 grep -q 'm_runtimeScheduler.trySubmit' src/systembackend.cpp \
     && ! grep -q 'QtConcurrent::run' src/systembackend.cpp \
     && score_optimize=$((score_optimize + 8))
