@@ -19,7 +19,8 @@ pass scheduler
 # sessions conflict with the shell so they cannot render concurrently.
 grep -q 'beginForegroundApp' qml/Main.qml
 grep -q 'endForegroundApp' qml/Main.qml
-test "$(grep -c 'StackView.destroyOnPop = true' qml/Main.qml)" -eq 4
+test "$(grep -c 'StackView.destroyOnPop = true' qml/Main.qml)" -eq 3
+grep -q 'cachedSettings.StackView.destroyOnPop = false' qml/Main.qml
 grep -q '^Conflicts=meow-os.service' systemd/meow-mindustry.service
 pass foreground-session
 
@@ -59,4 +60,3 @@ if [ "${1:-}" = "--live" ]; then
 fi
 
 printf '%s\n' 'EXPERIMENTAL_ARCHITECTURE_ACCEPTANCE=PASS'
-

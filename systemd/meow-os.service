@@ -17,6 +17,7 @@ SupplementaryGroups=input video render audio i2c
 RuntimeDirectory=meow-os
 Environment=XDG_RUNTIME_DIR=/run/meow-os
 EnvironmentFile=-/etc/meow-os/display.conf
+ExecStartPre=+/opt/meow-os/bin/meow-cpufreq-recover
 ExecStartPre=+/opt/meow-os/bin/meow-backlight-permissions
 ExecStartPre=+/opt/meow-os/bin/meow-wait-display
 ExecStartPre=+/opt/meow-os/bin/meow-display-preflight

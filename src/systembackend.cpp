@@ -10,6 +10,7 @@
 #include <QNetworkAddressEntry>
 #include <QNetworkInterface>
 #include <QRegularExpression>
+#include <QSaveFile>
 #include <QSet>
 #include <QStorageInfo>
 #include <QSettings>
@@ -34,6 +35,9 @@
 
 namespace {
 
+const QString kCpuFreqSleepStatePath = QStringLiteral("/var/lib/meow-os/cpufreq-sleep.state");
+const QString kCpuFreqBoostStatePath = QStringLiteral("/var/lib/meow-os/cpufreq-boost.state");
+
 QString formatBytes(qint64 bytes);
 
 QString readTextFile(const QString &path)
@@ -41,6 +45,19 @@ QString readTextFile(const QString &path)
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return QString();
     return QString::fromLocal8Bit(file.readAll()).trimmed();
+}
+
+bool saveCpuFreqState(const QString &path, const QVector<QPair<QString, QByteArray>> &limits)
+{
+    QSaveFile state(path);
+    if (!state.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+    for (const auto &limit : limits) {
+        state.write(limit.first.toUtf8());
+        state.write("\t");
+        state.write(limit.second);
+        state.write("\n");
+    }
+    return state.commit();
 }
 
 struct ProcessResult {
@@ -1007,6 +1024,14 @@ SystemBackend::SystemBackend(QObject *parent)
     m_volumeSetTimer.setInterval(80);
     m_brightnessSetTimer.setSingleShot(true);
     m_brightnessSetTimer.setInterval(60);
+    m_cpuBoostReleaseTimer.setSingleShot(true);
+    m_cpuBoostReleaseTimer.setInterval(320);
+    connect(&m_cpuBoostReleaseTimer, &QTimer::timeout,
+            this, &SystemBackend::releaseInteractiveCpuBoost);
+    m_runtimeScheduler.setInteractiveWakeupCallback([this]() {
+        QMetaObject::invokeMethod(this, [this]() { activateInteractiveCpuBoost(); },
+                                  Qt::QueuedConnection);
+    });
     m_volumeSetProcess.setProcessChannelMode(QProcess::MergedChannels);
     m_feedbackProcess.setProcessChannelMode(QProcess::MergedChannels);
     connect(&m_volumeSetTimer, &QTimer::timeout, this, [this]() {
@@ -1254,10 +1279,76 @@ void SystemBackend::setActiveScope(const QString &scope)
 {
     if (m_activeScope == scope) return;
     m_activeScope = scope;
+    if (scope == QLatin1String("wifi") && !m_pendingWifiNetworks.isEmpty()) {
+        m_wifiNetworks = m_pendingWifiNetworks;
+        m_wifiScanError = m_pendingWifiScanError;
+        m_pendingWifiNetworks.clear();
+        m_pendingWifiScanError.clear();
+        emit wifiChanged();
+    }
+    if (scope == QLatin1String("storage") && !m_pendingStorageSnapshot.isEmpty()) {
+        const QVariantMap snapshot = m_pendingStorageSnapshot;
+        m_pendingStorageSnapshot.clear();
+        applyStorageSnapshot(snapshot);
+    }
     if (scope == QLatin1String("performance")) {
+        if (!m_pendingPerformanceSnapshot.isEmpty()) {
+            const QVariantMap snapshot = m_pendingPerformanceSnapshot;
+            m_pendingPerformanceSnapshot.clear();
+            applyPerformanceSnapshot(snapshot, scope);
+        }
         refreshPerformance();
     }
     if (!m_statusTaskRunning) refreshStatus();
+}
+
+void SystemBackend::boostInteractivePerformance()
+{
+    activateInteractiveCpuBoost();
+}
+
+void SystemBackend::activateInteractiveCpuBoost()
+{
+    if (m_screenSleeping) return;
+    if (!m_cpuBoostRestoreMins.isEmpty()) {
+        m_cpuBoostReleaseTimer.start();
+        return;
+    }
+    if (m_cpuBoostRestoreMins.isEmpty()) {
+        const QDir cpufreq(QStringLiteral("/sys/devices/system/cpu/cpufreq"));
+        const QStringList policies = cpufreq.entryList({QStringLiteral("policy*")}, QDir::Dirs | QDir::NoDotAndDotDot);
+        for (const QString &policy : policies) {
+            const QString base = cpufreq.absoluteFilePath(policy);
+            const QString minPath = base + QStringLiteral("/scaling_min_freq");
+            const QByteArray currentMin = readTextFile(minPath).toLocal8Bit();
+            const QByteArray maximum = readTextFile(base + QStringLiteral("/scaling_max_freq")).toLocal8Bit();
+            if (currentMin.isEmpty() || maximum.isEmpty()) continue;
+            m_cpuBoostRestoreMins.append(qMakePair(minPath, currentMin));
+        }
+        if (!saveCpuFreqState(kCpuFreqBoostStatePath, m_cpuBoostRestoreMins)) {
+            m_cpuBoostRestoreMins.clear();
+            return;
+        }
+        for (const auto &entry : m_cpuBoostRestoreMins) {
+            const QString base = QFileInfo(entry.first).absolutePath();
+            const QByteArray maximum = readTextFile(base + QStringLiteral("/scaling_max_freq")).toLocal8Bit();
+            QFile file(entry.first);
+            if (!maximum.isEmpty() && file.open(QIODevice::WriteOnly | QIODevice::Text))
+                file.write(maximum + '\n');
+        }
+    }
+    m_cpuBoostReleaseTimer.start();
+}
+
+void SystemBackend::releaseInteractiveCpuBoost()
+{
+    for (const auto &entry : m_cpuBoostRestoreMins) {
+        QFile file(entry.first);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) continue;
+        file.write(entry.second + '\n');
+    }
+    m_cpuBoostRestoreMins.clear();
+    QFile::remove(kCpuFreqBoostStatePath);
 }
 
 qint64 SystemBackend::idleMs() const
@@ -1291,6 +1382,35 @@ bool SystemBackend::eventFilter(QObject *watched, QEvent *event)
 }
 
 void SystemBackend::refreshPerformance()
+{
+    if (m_performanceTaskRunning) {
+        m_performanceRefreshPending = true;
+        return;
+    }
+    m_performanceTaskRunning = true;
+    const QString scope = m_activeScope;
+    const meow::TaskPriority priority = scope == QStringLiteral("performance")
+            ? meow::TaskPriority::Interactive : meow::TaskPriority::Background;
+    const bool accepted = m_runtimeScheduler.trySubmit(priority, [this, scope]() {
+        const QVariantMap snapshot = collectPerformanceSnapshot();
+        QMetaObject::invokeMethod(this, [this, snapshot, scope]() {
+            m_performanceTaskRunning = false;
+            if (m_activeScope == QStringLiteral("performance"))
+                applyPerformanceSnapshot(snapshot, scope);
+            else
+                m_pendingPerformanceSnapshot = snapshot;
+            emit schedulerChanged();
+            if (m_performanceRefreshPending) {
+                m_performanceRefreshPending = false;
+                refreshPerformance();
+            }
+        }, Qt::QueuedConnection);
+    });
+    if (!accepted) m_performanceTaskRunning = false;
+    emit schedulerChanged();
+}
+
+QVariantMap SystemBackend::collectPerformanceSnapshot()
 {
     QVector<quint64> idle;
     QVector<quint64> total;
@@ -1457,31 +1577,52 @@ void SystemBackend::refreshPerformance()
     sample.insert(QStringLiteral("memory"), memPercent);
     sample.insert(QStringLiteral("memoryUsed"), memUsed);
     sample.insert(QStringLiteral("memoryTotal"), memTotal);
-    if (m_performanceHistory.size() >= 60) m_performanceHistory.removeFirst();
-    m_performanceHistory.append(sample);
+    QVariantMap result;
+    result.insert(QStringLiteral("cpuTotal"), cpuTotal);
+    result.insert(QStringLiteral("cpuUsage"), usage);
+    result.insert(QStringLiteral("cpuFrequencies"), cpuFrequencies);
+    result.insert(QStringLiteral("gpuUsage"), gpu);
+    result.insert(QStringLiteral("cpuTemperatureC"), cpuTemperature);
+    result.insert(QStringLiteral("cpuFrequencyMhz"), cpuFrequencyMhz);
+    result.insert(QStringLiteral("cpuMaxFrequencyMhz"), cpuMaxFrequencyMhz);
+    result.insert(QStringLiteral("gpuFrequencyMhz"), gpuFrequencyMhz);
+    result.insert(QStringLiteral("loadAverage"), loadAverage);
+    result.insert(QStringLiteral("uptime"), uptime);
+    result.insert(QStringLiteral("processCount"), processCount);
+    result.insert(QStringLiteral("memoryPercent"), memPercent);
+    result.insert(QStringLiteral("memoryUsedBytes"), memUsed);
+    result.insert(QStringLiteral("memoryAvailableBytes"), memAvailable);
+    result.insert(QStringLiteral("memoryTotalBytes"), memTotal);
+    result.insert(QStringLiteral("historySample"), sample);
+    return result;
+}
 
-    m_cpuTotal = cpuTotal;
-    m_cpuUsage = usage;
-    m_cpuFrequencies = cpuFrequencies;
-    m_gpuUsage = gpu;
-    m_cpuTemperatureC = cpuTemperature;
-    m_cpuFrequencyMhz = cpuFrequencyMhz;
-    m_cpuMaxFrequencyMhz = cpuMaxFrequencyMhz;
-    m_gpuFrequencyMhz = gpuFrequencyMhz;
-    m_loadAverage = loadAverage;
-    m_uptime = uptime;
-    m_processCount = processCount;
-    m_memoryPercent = memPercent;
-    m_memoryUsedBytes = memUsed;
-    m_memoryAvailableBytes = memAvailable;
-    m_memoryTotalBytes = memTotal;
+void SystemBackend::applyPerformanceSnapshot(const QVariantMap &snapshot, const QString &scope)
+{
+    m_cpuTotal = snapshot.value(QStringLiteral("cpuTotal"), -1).toInt();
+    m_cpuUsage = snapshot.value(QStringLiteral("cpuUsage")).toList();
+    m_cpuFrequencies = snapshot.value(QStringLiteral("cpuFrequencies")).toList();
+    m_gpuUsage = snapshot.value(QStringLiteral("gpuUsage"), -1).toInt();
+    m_cpuTemperatureC = snapshot.value(QStringLiteral("cpuTemperatureC"), -273.15).toDouble();
+    m_cpuFrequencyMhz = snapshot.value(QStringLiteral("cpuFrequencyMhz"), -1).toInt();
+    m_cpuMaxFrequencyMhz = snapshot.value(QStringLiteral("cpuMaxFrequencyMhz"), -1).toInt();
+    m_gpuFrequencyMhz = snapshot.value(QStringLiteral("gpuFrequencyMhz"), -1).toInt();
+    m_loadAverage = snapshot.value(QStringLiteral("loadAverage")).toString();
+    m_uptime = snapshot.value(QStringLiteral("uptime")).toString();
+    m_processCount = snapshot.value(QStringLiteral("processCount"), 0).toInt();
+    m_memoryPercent = snapshot.value(QStringLiteral("memoryPercent"), -1).toInt();
+    m_memoryUsedBytes = snapshot.value(QStringLiteral("memoryUsedBytes"), 0).toLongLong();
+    m_memoryAvailableBytes = snapshot.value(QStringLiteral("memoryAvailableBytes"), 0).toLongLong();
+    m_memoryTotalBytes = snapshot.value(QStringLiteral("memoryTotalBytes"), 0).toLongLong();
+    if (m_performanceHistory.size() >= 60) m_performanceHistory.removeFirst();
+    m_performanceHistory.append(snapshot.value(QStringLiteral("historySample")));
     meow::RuntimeSnapshot runtimeSnapshot;
     runtimeSnapshot.sequence = ++m_runtimeSequence;
     runtimeSnapshot.cpuPercent = m_cpuTotal;
     runtimeSnapshot.memoryPercent = m_memoryPercent;
     runtimeSnapshot.gpuPercent = m_gpuUsage;
     runtimeSnapshot.displayRotation = displayRotation();
-    runtimeSnapshot.foregroundApp = m_activeScope.toStdString();
+    runtimeSnapshot.foregroundApp = scope.toStdString();
     m_runtimeSnapshotStore.publish(std::move(runtimeSnapshot));
     emit performanceChanged();
 }
@@ -1508,7 +1649,10 @@ void SystemBackend::refreshStorage()
         const QVariantMap snapshot = collectStorageSnapshot();
         QMetaObject::invokeMethod(this, [this, snapshot]() {
             m_storageTaskRunning = false;
-            applyStorageSnapshot(snapshot);
+            if (m_activeScope == QStringLiteral("storage"))
+                applyStorageSnapshot(snapshot);
+            else
+                m_pendingStorageSnapshot = snapshot;
             emit schedulerChanged();
             if (m_storageRefreshPending) {
                 m_storageRefreshPending = false;
@@ -1688,8 +1832,15 @@ void SystemBackend::scanWifi()
         const QVariantMap result = collectWifiNetworks();
         QMetaObject::invokeMethod(this, [this, result]() {
             m_wifiScanRunning = false;
-            m_wifiNetworks = result.value(QStringLiteral("networks")).toList();
-            m_wifiScanError = result.value(QStringLiteral("message")).toString();
+            const QVariantList networks = result.value(QStringLiteral("networks")).toList();
+            const QString message = result.value(QStringLiteral("message")).toString();
+            if (m_activeScope == QStringLiteral("wifi")) {
+                m_wifiNetworks = networks;
+                m_wifiScanError = message;
+            } else {
+                m_pendingWifiNetworks = networks;
+                m_pendingWifiScanError = message;
+            }
             emit wifiChanged();
             emit schedulerChanged();
             refreshStatus();
@@ -1971,6 +2122,8 @@ void SystemBackend::setScreenSleeping(bool sleeping)
     if (m_screenSleeping == sleeping) return;
     m_screenSleeping = sleeping;
     if (m_screenSleeping) {
+        m_cpuBoostReleaseTimer.stop();
+        releaseInteractiveCpuBoost();
         m_brightnessBeforeSleep = m_displayBrightnessPercent > 0 ? m_displayBrightnessPercent : 50;
         if (!m_backlightPath.isEmpty() && m_brightnessMax > 0) {
             QFile brightness(m_backlightPath);
@@ -1985,22 +2138,28 @@ void SystemBackend::setScreenSleeping(bool sleeping)
         // True System-Level Deep Low-Power Throttling
         if (m_sleepPowerLevel == 1) {
             m_savedCpufreqLimits.clear();
-            const QStringList policyDirs = {QStringLiteral("/sys/devices/system/cpu/cpufreq/policy0"),
-                                            QStringLiteral("/sys/devices/system/cpu/cpufreq/policy4"),
-                                            QStringLiteral("/sys/devices/system/cpu/cpu0/cpufreq"),
-                                            QStringLiteral("/sys/devices/system/cpu/cpu4/cpufreq")};
+            const QDir cpufreq(QStringLiteral("/sys/devices/system/cpu/cpufreq"));
+            const QStringList policies = cpufreq.entryList(
+                    {QStringLiteral("policy*")}, QDir::Dirs | QDir::NoDotAndDotDot);
+            QStringList policyDirs;
+            for (const QString &policy : policies)
+                policyDirs.append(cpufreq.absoluteFilePath(policy));
             for (const QString &dirPath : policyDirs) {
                 const QString maxFreqPath = dirPath + QStringLiteral("/scaling_max_freq");
-                QFile maxFreqFile(maxFreqPath);
-                if (maxFreqFile.exists() && maxFreqFile.open(QIODevice::ReadWrite | QIODevice::Text)) {
-                    QByteArray current = maxFreqFile.readAll().trimmed();
-                    if (!current.isEmpty()) {
-                        m_savedCpufreqLimits.append(qMakePair(maxFreqPath, current));
-                        maxFreqFile.seek(0);
+                const QByteArray current = readTextFile(maxFreqPath).toLocal8Bit();
+                if (!current.isEmpty())
+                    m_savedCpufreqLimits.append(qMakePair(maxFreqPath, current));
+            }
+            // Never lower the policy ceiling unless the exact original values
+            // are durable. A service restart during sleep can then recover them.
+            if (saveCpuFreqState(kCpuFreqSleepStatePath, m_savedCpufreqLimits)) {
+                for (const auto &limit : m_savedCpufreqLimits) {
+                    QFile maxFreqFile(limit.first);
+                    if (maxFreqFile.open(QIODevice::WriteOnly | QIODevice::Text))
                         maxFreqFile.write("408000\n");
-                    }
-                    maxFreqFile.close();
                 }
+            } else {
+                m_savedCpufreqLimits.clear();
             }
         }
     } else {
@@ -2013,6 +2172,7 @@ void SystemBackend::setScreenSleeping(bool sleeping)
             }
         }
         m_savedCpufreqLimits.clear();
+        QFile::remove(kCpuFreqSleepStatePath);
 
         if (!m_backlightPath.isEmpty() && m_brightnessMax > 0) {
             const int targetPercent = m_brightnessBeforeSleep > 0 ? m_brightnessBeforeSleep : 50;

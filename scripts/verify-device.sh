@@ -54,6 +54,60 @@ if [ "${1:-}" = "--performance-baseline" ]; then
     printf '%s\n' 'performance_baseline=passed'
 fi
 
+if [ "${1:-}" = "--ui-switch" ]; then
+    printf '%s\n' '[ui] measuring cold and warm settings page switches'
+    set +e
+    timeout "${MEOW_UI_SWITCH_TIMEOUT:-20}s" sudo -n -u radxa env \
+        QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
+        XDG_RUNTIME_DIR=/run/user/1000 \
+        /opt/meow-os/meow-os --settings --qa --qa-switch >"$TMP_DIR/ui-switch.log" 2>&1
+    switchRc=$?
+    set -e
+    count=$(grep -c 'settings-frame' "$TMP_DIR/ui-switch.log" || true)
+    coldMaxMs=$(grep 'settings-frame' "$TMP_DIR/ui-switch.log" | head -n 8 | awk '{if ($(NF-1)+0 > max) max=$(NF-1)+0} END{print max+0}')
+    warmMaxMs=$(grep 'settings-frame' "$TMP_DIR/ui-switch.log" | tail -n 8 | awk '{if ($(NF-1)+0 > max) max=$(NF-1)+0} END{print max+0}')
+    cat "$TMP_DIR/ui-switch.log"
+    printf 'ui_switch_rc=%s\nui_frame_count=%s\nui_cold_frame_max_ms=%s\nui_warm_frame_max_ms=%s\n' "$switchRc" "$count" "$coldMaxMs" "$warmMaxMs"
+    [ "$switchRc" -eq 0 ] || [ "$switchRc" -eq 124 ]
+    [ "$count" -ge 16 ]
+    # The offscreen software backend intentionally has no Mali/DRM
+    # acceleration. Keep a separate regression ceiling; the stricter
+    # user-visible latency contract is enforced by --ui-switch-live below.
+    [ "$coldMaxMs" -le "${MEOW_UI_SOFTWARE_COLD_FRAME_MAX_MS:-400}" ]
+    [ "$warmMaxMs" -le "${MEOW_UI_SOFTWARE_WARM_FRAME_MAX_MS:-150}" ]
+    printf '%s\n' 'ui_switch_verification=passed'
+fi
+
+if [ "${1:-}" = "--ui-switch-live" ]; then
+    command -v systemctl >/dev/null 2>&1 || exit 1
+    printf '%s\n' '[ui-live] measuring real EGLFS/DSI frame latency'
+    restore_shell() { sudo -n systemctl start meow-os.service >/dev/null 2>&1 || true; }
+    trap 'restore_shell; rm -rf "$TMP_DIR"' EXIT INT TERM
+    sudo -n systemctl stop meow-os.service
+    sudo -n /opt/meow-os/bin/meow-display-preflight
+    set +e
+    timeout "${MEOW_UI_SWITCH_TIMEOUT:-20}s" sudo -n -u radxa env \
+        QT_QPA_PLATFORM=eglfs QT_QPA_EGLFS_KMS_CONFIG=/opt/meow-os/eglfs-kms.json \
+        QT_QPA_EGLFS_HIDECURSOR=1 QT_QPA_EGLFS_FORCE888=1 QSG_RENDER_LOOP=threaded \
+        XDG_RUNTIME_DIR=/run/user/1000 \
+        /opt/meow-os/meow-os --settings --qa --qa-switch >"$TMP_DIR/ui-switch-live.log" 2>&1
+    liveRc=$?
+    set -e
+    restore_shell
+    sleep 4
+    frames=$(grep -c 'settings-frame' "$TMP_DIR/ui-switch-live.log" || true)
+    coldMax=$(grep 'settings-frame' "$TMP_DIR/ui-switch-live.log" | head -n 8 | awk '{if ($(NF-1)+0 > max) max=$(NF-1)+0} END{print max+0}')
+    warmMax=$(grep 'settings-frame' "$TMP_DIR/ui-switch-live.log" | tail -n 8 | awk '{if ($(NF-1)+0 > max) max=$(NF-1)+0} END{print max+0}')
+    cat "$TMP_DIR/ui-switch-live.log"
+    printf 'ui_live_rc=%s\nui_live_frames=%s\nui_live_cold_max_ms=%s\nui_live_warm_max_ms=%s\n' "$liveRc" "$frames" "$coldMax" "$warmMax"
+    [ "$liveRc" -eq 0 ] || [ "$liveRc" -eq 124 ]
+    [ "$frames" -ge 16 ]
+    [ "$coldMax" -le "${MEOW_UI_COLD_FRAME_MAX_MS:-180}" ]
+    [ "$warmMax" -le "${MEOW_UI_WARM_FRAME_MAX_MS:-80}" ]
+    systemctl is-active --quiet meow-os.service
+    printf '%s\n' 'ui_switch_live_verification=passed'
+fi
+
 if [ "${1:-}" = "--live" ]; then
     printf '%s\n' '[live] checking current desktop/session state'
     if command -v systemctl >/dev/null 2>&1; then

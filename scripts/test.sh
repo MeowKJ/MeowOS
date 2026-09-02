@@ -79,6 +79,10 @@ grep -q 'quality-gate.sh' scripts/install-live.sh
 grep -q 'MEOW_BUILD_JOBS' scripts/install-live.sh
 grep -q 'SuccessExitStatus=1 SIGTERM' systemd/meow-os.service
 grep -q 'performance_baseline=passed' scripts/verify-device.sh
+grep -q 'ui_switch_verification=passed' scripts/verify-device.sh
+grep -q 'ui_switch_live_verification=passed' scripts/verify-device.sh
+grep -q 'settings-frame' qml/Main.qml
+grep -q '正在准备页面' qml/apps/SettingsApp.qml
 test -x scripts/audit-experimental-architecture.sh
 grep -q 'EXPERIMENTAL_ARCHITECTURE_ACCEPTANCE=PASS' scripts/audit-experimental-architecture.sh
 grep -Fq "sed 's/\\r\$//' scripts/meow-mindustry-launch.sh" scripts/install-live.sh
@@ -145,7 +149,8 @@ grep -q 'prewarmTimer' qml/apps/SettingsApp.qml
 grep -q 'settings-switch' qml/apps/SettingsApp.qml
 grep -q 'qaSwitchTimer' qml/apps/SettingsApp.qml
 ! grep -q 'bgAppPrewarmTimer' qml/Main.qml
-test "$(grep -c 'StackView.destroyOnPop = true' qml/Main.qml)" -eq 4
+test "$(grep -c 'StackView.destroyOnPop = true' qml/Main.qml)" -eq 3
+grep -q 'cachedSettings.StackView.destroyOnPop = false' qml/Main.qml
 ! grep -q '驱动未提供忙碌率' qml/apps/SettingsApp.qml
 grep -q '\$1 == "timeout" { \$2 = "0" }' scripts/configure-boot-branding
 grep -q 'U_BOOT_TIMEOUT=' scripts/configure-boot-branding

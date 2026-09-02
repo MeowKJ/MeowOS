@@ -42,6 +42,7 @@ public:
 
     std::future<void> submit(TaskPriority priority, std::function<void()> task);
     bool trySubmit(TaskPriority priority, std::function<void()> task);
+    void setInteractiveWakeupCallback(std::function<void()> callback);
     void shutdown();
     std::size_t workerCount() const;
     std::size_t pendingTasks() const;
@@ -73,6 +74,7 @@ private:
     std::atomic<std::size_t> peakPendingTasks_{0};
     const std::size_t maxPendingTasks_;
     bool stopping_ = false;
+    std::function<void()> interactiveWakeupCallback_;
 };
 
 } // namespace meow

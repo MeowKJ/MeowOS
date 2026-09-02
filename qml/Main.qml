@@ -30,6 +30,8 @@ ApplicationWindow {
     property var passwordDialog: passwordDialog
     property var ethernetDialog: ethernetDialog
     property bool screenDimmed: false
+    property double pendingUiFrameStartedAt: 0
+    property string pendingUiFrameSection: ""
     readonly property bool settingsForeground: stack.currentItem
                                                && (stack.currentItem.objectName === "settings"
                                                    || stack.currentItem.objectName === "meow-settings-page")
@@ -98,7 +100,10 @@ ApplicationWindow {
         } else if (appId === "settings") {
             if (!cachedSettings || !cachedSettings.parent) {
                 cachedSettings = settingsComponent.createObject(stack)
-                if (cachedSettings) cachedSettings.StackView.destroyOnPop = true
+                // Settings owns expensive page trees. Keep them dormant after
+                // pop; page timers are foreground-gated, so caching does not
+                // retain background sampling or power use.
+                if (cachedSettings) cachedSettings.StackView.destroyOnPop = false
             }
             return cachedSettings
         }
@@ -110,6 +115,7 @@ ApplicationWindow {
             window.showOperationMessage("已有应用正在运行，请先退出", false)
             return
         }
+        systemBackend.boostInteractivePerformance()
         if (!systemBackend.beginForegroundApp(appId)) {
             window.showOperationMessage("应用会话启动失败", false)
             return
@@ -128,6 +134,23 @@ ApplicationWindow {
         var appId = stack.currentItem ? stack.currentItem.objectName : ""
         if (stack.depth > 1) stack.pop()
         if (appId.length) systemBackend.endForegroundApp(appId)
+    }
+
+    function measureNextUiFrame(sectionName, startedAt) {
+        pendingUiFrameSection = sectionName
+        pendingUiFrameStartedAt = startedAt
+    }
+
+    onFrameSwapped: {
+        if (pendingUiFrameStartedAt <= 0) return
+        var completedItem = stack.currentItem
+        if (settingsQaMetrics)
+            console.log("[MeowOS] settings-frame", pendingUiFrameSection,
+                        Date.now() - pendingUiFrameStartedAt, "ms")
+        pendingUiFrameStartedAt = 0
+        pendingUiFrameSection = ""
+        if (completedItem && completedItem.uiFrameCompleted)
+            completedItem.uiFrameCompleted()
     }
 
     function launchMindustryDirect() {
@@ -308,7 +331,6 @@ ApplicationWindow {
 
             pushEnter: Transition {
                 PropertyAnimation { property: "opacity"; from: 0; to: 1; duration: 150; easing.type: Easing.OutCubic }
-                PropertyAnimation { property: "scale"; from: 0.95; to: 1.0; duration: 150; easing.type: Easing.OutCubic }
             }
             pushExit: Transition {
                 PropertyAnimation { property: "opacity"; from: 1; to: 0; duration: 120; easing.type: Easing.OutCubic }
@@ -318,7 +340,6 @@ ApplicationWindow {
             }
             popExit: Transition {
                 PropertyAnimation { property: "opacity"; from: 1; to: 0; duration: 120; easing.type: Easing.OutCubic }
-                PropertyAnimation { property: "scale"; from: 1.0; to: 0.95; duration: 120; easing.type: Easing.OutCubic }
             }
 
             Keys.onEscapePressed: {

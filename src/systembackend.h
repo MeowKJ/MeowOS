@@ -226,6 +226,7 @@ public:
     Q_INVOKABLE void refreshStatus();
     Q_INVOKABLE void refreshPerformance();
     Q_INVOKABLE void setActiveScope(const QString &scope);
+    Q_INVOKABLE void boostInteractivePerformance();
     Q_INVOKABLE qint64 idleMs() const;
     Q_INVOKABLE void scanWifi();
     Q_INVOKABLE void connectWifi(const QString &ssid, const QString &password);
@@ -289,6 +290,10 @@ private:
     void refreshStorage();
     void applyStorageSnapshot(const QVariantMap &snapshot);
     void applyStatusSnapshot(const QVariantMap &snapshot);
+    QVariantMap collectPerformanceSnapshot();
+    void applyPerformanceSnapshot(const QVariantMap &snapshot, const QString &scope);
+    void activateInteractiveCpuBoost();
+    void releaseInteractiveCpuBoost();
 
     QString m_hostname;
     QString m_kernel;
@@ -324,6 +329,8 @@ private:
     QString m_wifiScanError;
     int m_wifiEmptyPollCount = 0;
     QVariantList m_wifiNetworks;
+    QVariantList m_pendingWifiNetworks;
+    QString m_pendingWifiScanError;
     QVariantList m_ethernetPorts;
     QString m_ethernetOperationInterface;
     bool m_batteryAvailable = false;
@@ -379,6 +386,10 @@ private:
     bool m_statusTaskRunning = false;
     bool m_storageTaskRunning = false;
     bool m_storageRefreshPending = false;
+    QVariantMap m_pendingStorageSnapshot;
+    bool m_performanceTaskRunning = false;
+    bool m_performanceRefreshPending = false;
+    QVariantMap m_pendingPerformanceSnapshot;
     bool m_wifiScanRunning = false;
     bool m_wifiOperationRunning = false;
     bool m_ethernetOperationRunning = false;
@@ -398,6 +409,8 @@ private:
     QProcess m_feedbackProcess;
     int m_pendingBrightnessPercent = 30;
     QTimer m_brightnessSetTimer;
+    QTimer m_cpuBoostReleaseTimer;
+    QVector<QPair<QString, QByteArray>> m_cpuBoostRestoreMins;
     bool m_screenSleeping = false;
     int m_sleepTimeoutSeconds = 60;
     int m_sleepPowerLevel = 1;

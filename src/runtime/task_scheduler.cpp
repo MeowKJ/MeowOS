@@ -34,6 +34,7 @@ std::future<void> TaskScheduler::submit(TaskPriority priority, std::function<voi
     std::shared_ptr<std::packaged_task<void()>> packaged(
         new std::packaged_task<void()>(std::move(task)));
     std::future<void> result = packaged->get_future();
+    std::function<void()> interactiveWakeup;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (stopping_)
@@ -46,9 +47,18 @@ std::future<void> TaskScheduler::submit(TaskPriority priority, std::function<voi
         std::size_t peak = peakPendingTasks_.load(std::memory_order_relaxed);
         while (queue_.size() > peak && !peakPendingTasks_.compare_exchange_weak(
                    peak, queue_.size(), std::memory_order_relaxed)) {}
+        if (priority != TaskPriority::Background)
+            interactiveWakeup = interactiveWakeupCallback_;
     }
+    if (interactiveWakeup) interactiveWakeup();
     wakeup_.notify_one();
     return result;
+}
+
+void TaskScheduler::setInteractiveWakeupCallback(std::function<void()> callback)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    interactiveWakeupCallback_ = std::move(callback);
 }
 
 bool TaskScheduler::trySubmit(TaskPriority priority, std::function<void()> task)

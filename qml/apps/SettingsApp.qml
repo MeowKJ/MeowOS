@@ -24,6 +24,10 @@ Rectangle {
                                         displayPageLoader, performancePageLoader,
                                         storagePageLoader, aboutPageLoader]
     property int prewarmIndex: 0
+    property int displayedSectionIndex: sectionIndex
+    property int pendingSectionIndex: -1
+    property double pageReadyStartedAt: 0
+    property bool qaWaitingForReady: false
     property int qaSwitchIndex: 0
     readonly property var qaSections: ["wifi", "ethernet", "battery", "sound", "display", "performance", "storage", "about"]
     property double sectionSwitchStartedAt: 0
@@ -33,22 +37,41 @@ Rectangle {
         if (!pageLoaders || sectionIndex < 0 || sectionIndex >= pageLoaders.length) return
         var loader = pageLoaders[sectionIndex]
         if (loader) {
-            loader.asynchronous = false
+            // Keep the click path non-blocking. Already-created pages can be
+            // shown immediately; cold pages load asynchronously behind the
+            // lightweight loading overlay below.
+            loader.asynchronous = !loader.item
             loader.active = true
         }
     }
     function openSection(name, index) {
         if (!pageLoaders || index < 0 || index >= pageLoaders.length) return
+        systemBackend.boostInteractivePerformance()
         var loader = pageLoaders[index]
         sectionSwitchStartedAt = Date.now()
-        if (loader) {
-            loader.asynchronous = false
-            loader.active = true
+        pageReadyStartedAt = sectionSwitchStartedAt
+        window.measureNextUiFrame(name, sectionSwitchStartedAt)
+        if (loader && loader.status === Loader.Ready) {
+            displayedSectionIndex = index
+            pendingSectionIndex = -1
+        } else {
+            pendingSectionIndex = index
         }
         section = name
     }
+    function commitLoadedPage(index) {
+        if (index !== pendingSectionIndex || pageLoaders[index].status !== Loader.Ready) return
+        displayedSectionIndex = index
+        pendingSectionIndex = -1
+        if (window.settingsQaMetrics && pageReadyStartedAt > 0)
+            console.log("[MeowOS] settings-ready", section, Date.now() - pageReadyStartedAt, "ms")
+        pageReadyStartedAt = 0
+        if (qaWaitingForReady) {
+            qaWaitingForReady = false
+            scheduleNextQaSwitch()
+        }
+    }
     onSectionChanged: {
-        ensureCurrentPage()
         window.lastSettingsSection = section
         systemBackend.setActiveScope(section)
         if (sectionSwitchStartedAt > 0) {
@@ -62,23 +85,30 @@ Rectangle {
         ensureCurrentPage()
         window.lastSettingsSection = section
         systemBackend.setActiveScope(section)
-        prewarmTimer.start()
+        if (window.settingsQaSwitch)
+            qaSwitchTimer.start()
+        else
+            prewarmTimer.start()
     }
 
     Timer {
         id: prewarmTimer
-        interval: 35
+        interval: 80
         repeat: true
+        triggeredOnStart: false
         onTriggered: {
             while (settingsPage.prewarmIndex < settingsPage.pageLoaders.length
-                   && settingsPage.pageLoaders[settingsPage.prewarmIndex].active)
+                   && settingsPage.pageLoaders[settingsPage.prewarmIndex].active) {
+                var previous = settingsPage.pageLoaders[settingsPage.prewarmIndex]
+                if (previous.status !== Loader.Ready && previous.status !== Loader.Error)
+                    return
                 settingsPage.prewarmIndex++
+            }
             if (settingsPage.prewarmIndex >= settingsPage.pageLoaders.length) {
                 stop()
                 return
             }
             var loader = settingsPage.pageLoaders[settingsPage.prewarmIndex]
-            settingsPage.prewarmIndex++
             if (loader && !loader.active) {
                 loader.asynchronous = true
                 loader.active = true
@@ -88,18 +118,38 @@ Rectangle {
 
     Timer {
         id: qaSwitchTimer
-        interval: 350
-        repeat: true
-        running: window.settingsQaSwitch
-        triggeredOnStart: true
+        interval: 120
+        repeat: false
         onTriggered: {
-            if (settingsPage.qaSwitchIndex >= settingsPage.qaSections.length) {
-                stop()
+            if (settingsPage.qaSwitchIndex >= settingsPage.qaSections.length * 2) {
                 return
             }
-            var index = settingsPage.qaSwitchIndex++
+            var index = settingsPage.qaSwitchIndex++ % settingsPage.qaSections.length
             settingsPage.openSection(settingsPage.qaSections[index], index)
         }
+    }
+
+    function scheduleNextQaSwitch() {
+        // Cold construction leaves render-thread uploads and binding work
+        // immediately after Loader.Ready. Give that one-time work a short
+        // settle window; the second cached pass remains a rapid-switch test.
+        qaSwitchTimer.interval = qaSwitchIndex < qaSections.length ? 280 : 120
+        qaSwitchTimer.restart()
+    }
+
+    function uiFrameCompleted() {
+        if (pendingSectionIndex >= 0) {
+            var loader = pageLoaders[pendingSectionIndex]
+            if (loader && !loader.active) {
+                loader.asynchronous = true
+                loader.active = true
+            }
+        }
+        if (!window.settingsQaSwitch
+                || settingsPage.qaSwitchIndex >= settingsPage.qaSections.length * 2)
+            return
+        if (pendingSectionIndex < 0) scheduleNextQaSwitch()
+        else qaWaitingForReady = true
     }
 
     Rectangle {
@@ -130,15 +180,28 @@ Rectangle {
         radius: 26; color: "#FFFFFF"; clip: true
         StackLayout {
             anchors.fill: parent
-            currentIndex: settingsPage.sectionIndex
-            Loader { id: wifiPageLoader; active: false; asynchronous: true; sourceComponent: wifiSettings }
-            Loader { id: ethernetPageLoader; active: false; asynchronous: true; sourceComponent: ethernetSettings }
-            Loader { id: batteryPageLoader; active: false; asynchronous: true; sourceComponent: batterySettings }
-            Loader { id: soundPageLoader; active: false; asynchronous: true; sourceComponent: soundSettings }
-            Loader { id: displayPageLoader; active: false; asynchronous: true; sourceComponent: displaySettings }
-            Loader { id: performancePageLoader; active: false; asynchronous: true; sourceComponent: performanceSettings }
-            Loader { id: storagePageLoader; active: false; asynchronous: true; sourceComponent: storageSettings }
-            Loader { id: aboutPageLoader; active: false; asynchronous: true; sourceComponent: aboutSettings }
+            currentIndex: settingsPage.displayedSectionIndex
+            Loader { id: wifiPageLoader; active: false; asynchronous: true; sourceComponent: wifiSettings; onStatusChanged: settingsPage.commitLoadedPage(0) }
+            Loader { id: ethernetPageLoader; active: false; asynchronous: true; sourceComponent: ethernetSettings; onStatusChanged: settingsPage.commitLoadedPage(1) }
+            Loader { id: batteryPageLoader; active: false; asynchronous: true; sourceComponent: batterySettings; onStatusChanged: settingsPage.commitLoadedPage(2) }
+            Loader { id: soundPageLoader; active: false; asynchronous: true; sourceComponent: soundSettings; onStatusChanged: settingsPage.commitLoadedPage(3) }
+            Loader { id: displayPageLoader; active: false; asynchronous: true; sourceComponent: displaySettings; onStatusChanged: settingsPage.commitLoadedPage(4) }
+            Loader { id: performancePageLoader; active: false; asynchronous: true; sourceComponent: performanceSettings; onStatusChanged: settingsPage.commitLoadedPage(5) }
+            Loader { id: storagePageLoader; active: false; asynchronous: true; sourceComponent: storageSettings; onStatusChanged: settingsPage.commitLoadedPage(6) }
+            Loader { id: aboutPageLoader; active: false; asynchronous: true; sourceComponent: aboutSettings; onStatusChanged: settingsPage.commitLoadedPage(7) }
+        }
+        Rectangle {
+            anchors.fill: parent
+            z: 20
+            radius: 26
+            color: "#F8F7FF"
+            visible: settingsPage.pendingSectionIndex >= 0
+            Column {
+                anchors.centerIn: parent
+                spacing: 10
+                Text { anchors.horizontalCenter: parent.horizontalCenter; text: "正在准备页面…"; color: "#6366F1"; font.family: "Noto Sans CJK SC"; font.pixelSize: 18; font.weight: Font.DemiBold }
+                Rectangle { anchors.horizontalCenter: parent.horizontalCenter; width: 72; height: 4; radius: 2; color: "#E0DBFC"; Rectangle { width: 28; height: parent.height; radius: 2; color: "#6366F1" } }
+            }
         }
     }
 
