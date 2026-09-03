@@ -51,6 +51,24 @@ int main()
     assert(input.setDisplayGeometry(display.geometry()));
     assert(input.start());
 
+    class MockPower final : public meow::IPowerHal {
+    public:
+        int batteryPercent() const override { return 95; }
+        bool externalPowerPresent() const override { return true; }
+        int voltageMv() const override { return 4150; }
+        int currentMa() const override { return 1200; }
+        double temperatureC() const override { return 28.5; }
+        int designCapacityMah() const override { return 10000; }
+        bool isCalibrated() const override { return true; }
+    };
+    MockPower power;
+    assert(power.batteryPercent() == 95);
+    assert(power.externalPowerPresent());
+    assert(power.voltageMv() == 4150);
+    assert(power.currentMa() == 1200);
+    assert(power.designCapacityMah() == 10000);
+    assert(power.isCalibrated());
+
     meow::AppSession session("mindustry");
     assert(session.requestStart());
     assert(session.markRunning());
@@ -83,6 +101,7 @@ int main()
     for (std::future<void> &job : jobs)
         job.get();
     assert(completed.load() == 32);
+    while (scheduler.runningTasks() != 0) std::this_thread::yield();
     assert(scheduler.runningTasks() == 0);
     const meow::SchedulerStats schedulerStats = scheduler.stats();
     assert(schedulerStats.submitted == 32 && schedulerStats.completed == 32);

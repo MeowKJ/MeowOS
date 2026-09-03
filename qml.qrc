@@ -25,6 +25,7 @@
         <file>qml/components/PerfMetric.qml</file>
         <file>qml/components/StorageDiskCard.qml</file>
         <file>qml/components/StatusPill.qml</file>
+        <file>qml/components/BatteryCalibrationDialog.qml</file>
         <file>qml/components/DesignTokens.qml</file>
         <file>qml/apps/qmldir</file>
         <file>qml/apps/TouchTestApp.qml</file>

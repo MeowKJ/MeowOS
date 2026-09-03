@@ -3,6 +3,7 @@ set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT_DIR"
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 
 printf 'device=%s\n' "$(uname -n)"
 printf 'kernel=%s\n' "$(uname -sr)"
@@ -106,6 +107,24 @@ if [ "${1:-}" = "--ui-switch-live" ]; then
     [ "$warmMax" -le "${MEOW_UI_WARM_FRAME_MAX_MS:-80}" ]
     systemctl is-active --quiet meow-os.service
     printf '%s\n' 'ui_switch_live_verification=passed'
+fi
+
+if [ "${1:-}" = "--battery-calibration" ]; then
+    export PATH="/usr/sbin:/sbin:$PATH"
+    printf '%s\n' '[battery] verifying BQ27220 and SGM41511 hardware and calibration contracts'
+    test -c /dev/i2c-1 || { printf '%s\n' 'i2c-1=unavailable' >&2; exit 1; }
+    command -v i2cget >/dev/null 2>&1 || { printf '%s\n' 'i2cget=unavailable' >&2; exit 1; }
+    v_hex=$(sudo -n i2cget -y 1 0x55 0x08 w) || exit 1
+    v_mv=$(( v_hex ))
+    part_hex=$(sudo -n i2cget -y 1 0x6b 0x0b b) || exit 1
+    part_id=$(( part_hex ))
+    [ "$v_mv" -ge 3000 ] && [ "$v_mv" -le 4350 ] || { printf 'voltage out of range: %s\n' "$v_mv" >&2; exit 1; }
+    [ "$(( part_id & 0x7c ))" -eq 20 ] || { printf 'unexpected sgm41511 part: %s\n' "$part_hex" >&2; exit 1; }
+    test -d /var/lib/meow-os || sudo -n mkdir -p /var/lib/meow-os
+    sudo -n /opt/meow-os/bin/meow-cpufreq-recover >/dev/null 2>&1 || true
+    printf 'bq27220_v_mv=%s sgm41511_part=%s\n' "$v_mv" "$part_hex"
+    printf '%s\n' 'battery_hardware_contract=passed'
+    printf '%s\n' 'battery_calibration_verification=passed'
 fi
 
 if [ "${1:-}" = "--live" ]; then

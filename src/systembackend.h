@@ -80,6 +80,11 @@ class SystemBackend final : public QObject
     Q_PROPERTY(QString gaugeError READ gaugeError NOTIFY powerChanged)
     Q_PROPERTY(QString batteryCalibrationStatus READ batteryCalibrationStatus NOTIFY powerChanged)
     Q_PROPERTY(QString batteryCalibrationSummary READ batteryCalibrationSummary NOTIFY powerChanged)
+    Q_PROPERTY(int chargerInputLimitMa READ chargerInputLimitMa NOTIFY powerChanged)
+    Q_PROPERTY(int chargerFastCurrentMa READ chargerFastCurrentMa NOTIFY powerChanged)
+    Q_PROPERTY(int batteryCapacityLearningStep READ batteryCapacityLearningStep NOTIFY powerChanged)
+    Q_PROPERTY(QString batteryCapacityLearningStatus READ batteryCapacityLearningStatus NOTIFY powerChanged)
+    Q_PROPERTY(bool batteryCalibrationRollbackAvailable READ batteryCalibrationRollbackAvailable NOTIFY powerChanged)
     Q_PROPERTY(QString boardProfile READ boardProfile CONSTANT)
     Q_PROPERTY(QVariantMap hardwareCapabilities READ hardwareCapabilities CONSTANT)
     Q_PROPERTY(int volumePercent READ volumePercent NOTIFY audioChanged)
@@ -221,12 +226,18 @@ public:
     int sleepPowerLevel() const;
     QStringList keepScreenOnApps() const;
     bool isWakeLockActive() const;
+    int chargerInputLimitMa() const { return m_chargerInputLimitMa; }
+    int chargerFastCurrentMa() const { return m_chargerFastCurrentMa; }
+    int batteryCapacityLearningStep() const { return m_batteryCapacityLearningStep; }
+    QString batteryCapacityLearningStatus() const { return m_batteryCapacityLearningStatus; }
+    bool batteryCalibrationRollbackAvailable() const { return m_batteryCalibrationRollbackAvailable; }
 
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void refreshStatus();
     Q_INVOKABLE void refreshPerformance();
     Q_INVOKABLE void setActiveScope(const QString &scope);
-    Q_INVOKABLE void boostInteractivePerformance();
+    Q_INVOKABLE void boostInteractivePerformance(int tier = 1, int durationMs = 0);
+    Q_INVOKABLE void releaseInteractivePerformance();
     Q_INVOKABLE qint64 idleMs() const;
     Q_INVOKABLE void scanWifi();
     Q_INVOKABLE void connectWifi(const QString &ssid, const QString &password);
@@ -248,7 +259,11 @@ public:
     Q_INVOKABLE void setScreenSleeping(bool sleeping);
     Q_INVOKABLE void wakeScreen();
     Q_INVOKABLE bool calibrateBattery(int referenceVoltageMv, int referenceCurrentMa,
-                                      int designCapacityMah, bool stable);
+                                      int designCapacityMah = 10000, bool stable = true);
+    Q_INVOKABLE bool rollbackBatteryCalibration();
+    Q_INVOKABLE void startCapacityLearning();
+    Q_INVOKABLE void advanceCapacityLearning();
+    Q_INVOKABLE void cancelCapacityLearning();
     Q_INVOKABLE void clearBatteryCalibration();
     Q_INVOKABLE void browseDirectory(const QString &path);
     Q_INVOKABLE void previewDocument(const QString &path);
@@ -292,7 +307,7 @@ private:
     void applyStatusSnapshot(const QVariantMap &snapshot);
     QVariantMap collectPerformanceSnapshot();
     void applyPerformanceSnapshot(const QVariantMap &snapshot, const QString &scope);
-    void activateInteractiveCpuBoost();
+    void activateInteractiveCpuBoost(int tier = 1, int durationMs = 0);
     void releaseInteractiveCpuBoost();
 
     QString m_hostname;
@@ -416,6 +431,11 @@ private:
     int m_sleepPowerLevel = 1;
     QStringList m_keepScreenOnApps;
     bool m_wakeLockActive = false;
+    int m_chargerInputLimitMa = 2400;
+    int m_chargerFastCurrentMa = 2400;
+    int m_batteryCapacityLearningStep = 0;
+    QString m_batteryCapacityLearningStatus;
+    bool m_batteryCalibrationRollbackAvailable = false;
     QVector<QPair<QString, QByteArray>> m_savedCpufreqLimits;
     int m_brightnessBeforeSleep = 50;
     QString m_savedScopeBeforeSleep;

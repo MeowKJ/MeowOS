@@ -22,6 +22,13 @@ grep -q 'meow-display-preflight' scripts/install-live.sh
 grep -q 'meow-display-preflight' systemd/meow-os.service
 test -f config/hardware-profiles/a5e.env
 test -f config/hardware-profiles/a733-generic.env
+test -f config/hardware-profiles/rk35xx-generic.env
+test -f qml/components/BatteryCalibrationDialog.qml
+grep -q 'BatteryCalibrationDialog' qml.qrc
+grep -q 'BatteryCalibrationDialog' qml/components/qmldir
+grep -q 'rollbackBatteryCalibration' src/systembackend.h
+grep -q 'startCapacityLearning' src/systembackend.h
+grep -q 'boostInteractivePerformance' src/systembackend.h
 test -f systemd/meow-mindustry.service
 test -f systemd/meow-console-recovery.service
 test -f config/meow-mindustry-sudoers

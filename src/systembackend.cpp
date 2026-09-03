@@ -105,6 +105,10 @@ QVariantMap detectHardwareCapabilities(QString *profile)
                || compatible.contains(QStringLiteral("a733"), Qt::CaseInsensitive)
                || qEnvironmentVariableIsSet("MEOW_A733_PROFILE")) {
         selected = QStringLiteral("Allwinner A733 (通用)");
+    } else if (model.contains(QStringLiteral("RK35"), Qt::CaseInsensitive)
+               || compatible.contains(QStringLiteral("rockchip"), Qt::CaseInsensitive)
+               || qEnvironmentVariableIsSet("MEOW_RK_PROFILE")) {
+        selected = QStringLiteral("Rockchip RK35xx (通用)");
     }
     if (profile) *profile = selected;
     QVariantMap caps;
@@ -642,6 +646,9 @@ QVariantMap collectStatus(const QString &scope)
     quint16 gaugeVoltage = 0;
     quint16 gaugeCurrent = 0;
     quint16 gaugeSoc = 0;
+    quint16 gaugeRemaining = 0;
+    quint16 gaugeFull = 0;
+    quint16 gaugeDesign = 0;
     const bool gaugeCommunication = readI2cWord(0x55, 0x06, &gaugeTemperature);
     if (gaugeCommunication) {
         batteryAvailable = true;
@@ -649,6 +656,9 @@ QVariantMap collectStatus(const QString &scope)
         if (readI2cWord(0x55, 0x08, &gaugeVoltage)) voltageMv = gaugeVoltage;
         if (readI2cWord(0x55, 0x14, &gaugeCurrent)) currentMa = static_cast<qint16>(gaugeCurrent);
         if (readI2cWord(0x55, 0x2c, &gaugeSoc)) batteryPercent = qBound(0, static_cast<int>(gaugeSoc), 100);
+        if (readI2cWord(0x55, 0x28, &gaugeRemaining) && gaugeRemaining > 0) remainingMah = gaugeRemaining;
+        if (readI2cWord(0x55, 0x2a, &gaugeFull) && gaugeFull > 0) fullChargeMah = gaugeFull;
+        if (readI2cWord(0x55, 0x3c, &gaugeDesign) && gaugeDesign > 0) designCapacityMah = gaugeDesign;
         batteryHealth = QStringLiteral("Good");
     }
     const bool batteryCharging = batteryStatus.compare(QStringLiteral("Charging"), Qt::CaseInsensitive) == 0;
@@ -991,6 +1001,8 @@ SystemBackend::SystemBackend(QObject *parent)
     QSettings calibration(QStringLiteral("Meow OS"), QStringLiteral("battery"));
     m_batteryCalibrationStatus = calibration.value(QStringLiteral("status"), QStringLiteral("未校准")).toString();
     m_batteryCalibrationSummary = calibration.value(QStringLiteral("summary")).toString();
+    m_batteryCalibrationRollbackAvailable = calibration.childGroups().contains(QStringLiteral("rollback"));
+    m_batteryDesignCapacityMah = calibration.value(QStringLiteral("designCapacityMah"), 10000).toInt();
     QSettings displaySettings(QStringLiteral("Meow OS"), QStringLiteral("display"));
     m_sleepTimeoutSeconds = displaySettings.value(QStringLiteral("sleepTimeoutSeconds"), 60).toInt();
     m_sleepPowerLevel = displaySettings.value(QStringLiteral("sleepPowerLevel"), 1).toInt();
@@ -1284,34 +1296,40 @@ void SystemBackend::setActiveScope(const QString &scope)
         m_wifiScanError = m_pendingWifiScanError;
         m_pendingWifiNetworks.clear();
         m_pendingWifiScanError.clear();
-        emit wifiChanged();
+        QTimer::singleShot(20, this, [this]() { emit wifiChanged(); });
     }
     if (scope == QLatin1String("storage") && !m_pendingStorageSnapshot.isEmpty()) {
         const QVariantMap snapshot = m_pendingStorageSnapshot;
         m_pendingStorageSnapshot.clear();
-        applyStorageSnapshot(snapshot);
+        QTimer::singleShot(20, this, [this, snapshot]() { applyStorageSnapshot(snapshot); });
     }
     if (scope == QLatin1String("performance")) {
         if (!m_pendingPerformanceSnapshot.isEmpty()) {
             const QVariantMap snapshot = m_pendingPerformanceSnapshot;
             m_pendingPerformanceSnapshot.clear();
-            applyPerformanceSnapshot(snapshot, scope);
+            QTimer::singleShot(20, this, [this, snapshot, scope]() { applyPerformanceSnapshot(snapshot, scope); });
         }
         refreshPerformance();
     }
     if (!m_statusTaskRunning) refreshStatus();
 }
 
-void SystemBackend::boostInteractivePerformance()
+void SystemBackend::boostInteractivePerformance(int tier, int durationMs)
 {
-    activateInteractiveCpuBoost();
+    activateInteractiveCpuBoost(tier, durationMs);
 }
 
-void SystemBackend::activateInteractiveCpuBoost()
+void SystemBackend::releaseInteractivePerformance()
+{
+    releaseInteractiveCpuBoost();
+}
+
+void SystemBackend::activateInteractiveCpuBoost(int tier, int durationMs)
 {
     if (m_screenSleeping) return;
+    const int timeout = durationMs > 0 ? durationMs : (tier >= 2 ? 650 : 280);
     if (!m_cpuBoostRestoreMins.isEmpty()) {
-        m_cpuBoostReleaseTimer.start();
+        m_cpuBoostReleaseTimer.start(timeout);
         return;
     }
     if (m_cpuBoostRestoreMins.isEmpty()) {
@@ -1337,11 +1355,12 @@ void SystemBackend::activateInteractiveCpuBoost()
                 file.write(maximum + '\n');
         }
     }
-    m_cpuBoostReleaseTimer.start();
+    m_cpuBoostReleaseTimer.start(timeout);
 }
 
 void SystemBackend::releaseInteractiveCpuBoost()
 {
+    m_cpuBoostReleaseTimer.stop();
     for (const auto &entry : m_cpuBoostRestoreMins) {
         QFile file(entry.first);
         if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) continue;
@@ -1743,10 +1762,15 @@ void SystemBackend::applyStatusSnapshot(const QVariantMap &snapshot)
     const bool externalPowerPresent = snapshot.value(QStringLiteral("externalPowerPresent")).toBool();
     const double batteryTemperatureC = snapshot.value(QStringLiteral("batteryTemperatureC"), -273.15).toDouble();
     const QString chargeTemperatureZone = snapshot.value(QStringLiteral("chargeTemperatureZone")).toString();
-    const int batteryVoltageMv = snapshot.value(QStringLiteral("batteryVoltageMv"), -1).toInt();
-    const int batteryCurrentMa = snapshot.value(QStringLiteral("batteryCurrentMa")).toInt();
     const int batteryRawVoltageMv = snapshot.value(QStringLiteral("batteryRawVoltageMv"), -1).toInt();
     const int batteryRawCurrentMa = snapshot.value(QStringLiteral("batteryRawCurrentMa")).toInt();
+
+    QSettings calibration(QStringLiteral("Meow OS"), QStringLiteral("battery"));
+    const int voltageOffset = calibration.value(QStringLiteral("voltageOffsetMv"), 0).toInt();
+    const int currentOffset = calibration.value(QStringLiteral("currentOffsetMa"), 0).toInt();
+    const int batteryVoltageMv = batteryRawVoltageMv > 0 ? qMax(0, batteryRawVoltageMv + voltageOffset) : -1;
+    const int batteryCurrentMa = batteryRawCurrentMa != 0 ? (batteryRawCurrentMa + currentOffset) : 0;
+
     const int batteryRemainingMah = snapshot.value(QStringLiteral("batteryRemainingMah"), -1).toInt();
     const int batteryFullChargeMah = snapshot.value(QStringLiteral("batteryFullChargeMah"), -1).toInt();
     const int batteryDesignCapacityMah = snapshot.value(QStringLiteral("batteryDesignCapacityMah"), 10000).toInt();
@@ -1783,6 +1807,14 @@ void SystemBackend::applyStatusSnapshot(const QVariantMap &snapshot)
         m_batteryDesignCapacityMah = batteryDesignCapacityMah > 0 ? batteryDesignCapacityMah : 10000;
         m_gaugeCommunication = gaugeCommunication;
         m_gaugeError = gaugeError;
+        emit powerChanged();
+    }
+
+    const int chargerInputLimitMa = snapshot.value(QStringLiteral("chargerInputLimitMa"), 2400).toInt();
+    const int chargerFastCurrentMa = snapshot.value(QStringLiteral("chargerFastCurrentMa"), 2400).toInt();
+    if (chargerInputLimitMa != m_chargerInputLimitMa || chargerFastCurrentMa != m_chargerFastCurrentMa) {
+        m_chargerInputLimitMa = chargerInputLimitMa;
+        m_chargerFastCurrentMa = chargerFastCurrentMa;
         emit powerChanged();
     }
 
@@ -2204,19 +2236,38 @@ bool SystemBackend::calibrateBattery(int referenceVoltageMv, int referenceCurren
         emit powerChanged();
         return false;
     }
-    if (!stable || referenceVoltageMv < 3000 || referenceVoltageMv > 4300
-            || referenceCurrentMa < -10000 || referenceCurrentMa > 10000
-            || designCapacityMah < 1000 || designCapacityMah > 30000) {
-        m_batteryCalibrationStatus = QStringLiteral("失败：参考值或稳定条件不满足");
-        m_batteryCalibrationSummary = QStringLiteral("要求：电压3000–4300mV、电流±10000mA、容量1000–30000mAh，并保持静置稳定");
+    if (m_batteryCharging && referenceCurrentMa != 0) {
+        m_batteryCalibrationStatus = QStringLiteral("失败：充电中禁止电流校准");
+        m_batteryCalibrationSummary = QStringLiteral("安全规则：处于充电状态时禁止校准电流，请断开电源并静置后重试");
         emit powerChanged();
         return false;
     }
+    if (!stable || referenceVoltageMv < 3000 || referenceVoltageMv > 4350
+            || referenceCurrentMa < -10000 || referenceCurrentMa > 10000
+            || designCapacityMah < 1000 || designCapacityMah > 30000) {
+        m_batteryCalibrationStatus = QStringLiteral("失败：参考值或稳定条件不满足");
+        m_batteryCalibrationSummary = QStringLiteral("要求：电压3000–4350mV、电流±10000mA、容量1000–30000mAh，并保持静置稳定");
+        emit powerChanged();
+        return false;
+    }
+
+    QSettings calibration(QStringLiteral("Meow OS"), QStringLiteral("battery"));
+    if (calibration.contains(QStringLiteral("timestamp"))) {
+        calibration.beginGroup(QStringLiteral("rollback"));
+        calibration.setValue(QStringLiteral("status"), calibration.value(QStringLiteral("../status")));
+        calibration.setValue(QStringLiteral("timestamp"), calibration.value(QStringLiteral("../timestamp")));
+        calibration.setValue(QStringLiteral("voltageOffsetMv"), calibration.value(QStringLiteral("../voltageOffsetMv")));
+        calibration.setValue(QStringLiteral("currentOffsetMa"), calibration.value(QStringLiteral("../currentOffsetMa")));
+        calibration.setValue(QStringLiteral("designCapacityMah"), calibration.value(QStringLiteral("../designCapacityMah")));
+        calibration.setValue(QStringLiteral("summary"), calibration.value(QStringLiteral("../summary")));
+        calibration.endGroup();
+        m_batteryCalibrationRollbackAvailable = true;
+    }
+
     const int voltageOffset = referenceVoltageMv - m_batteryRawVoltageMv;
     const int currentOffset = referenceCurrentMa - m_batteryRawCurrentMa;
     const QString timestamp = QDateTime::currentDateTime().toString(Qt::ISODate);
-    QSettings calibration(QStringLiteral("Meow OS"), QStringLiteral("battery"));
-    calibration.setValue(QStringLiteral("status"), QStringLiteral("已记录（软件校准）"));
+    calibration.setValue(QStringLiteral("status"), QStringLiteral("已校准（两点标定）"));
     calibration.setValue(QStringLiteral("timestamp"), timestamp);
     calibration.setValue(QStringLiteral("referenceVoltageMv"), referenceVoltageMv);
     calibration.setValue(QStringLiteral("referenceCurrentMa"), referenceCurrentMa);
@@ -2228,15 +2279,100 @@ bool SystemBackend::calibrateBattery(int referenceVoltageMv, int referenceCurren
     const auto signedNumber = [](int value) {
         return (value >= 0 ? QStringLiteral("+") : QString()) + QString::number(value);
     };
-    const QString summary = QStringLiteral("电压偏差 %1 mV · 电流偏差 %2 mA · %3")
-            .arg(signedNumber(voltageOffset)).arg(signedNumber(currentOffset)).arg(timestamp);
+    const QString summary = QStringLiteral("电压补偿 %1 mV · 电流补偿 %2 mA · 标称 %3 mAh · %4")
+            .arg(signedNumber(voltageOffset)).arg(signedNumber(currentOffset)).arg(designCapacityMah).arg(timestamp);
     calibration.setValue(QStringLiteral("summary"), summary);
     calibration.setValue(QStringLiteral("writesToGauge"), false);
     m_batteryDesignCapacityMah = designCapacityMah;
-    m_batteryCalibrationStatus = QStringLiteral("已记录（未写入BQ）");
+    m_batteryCalibrationStatus = QStringLiteral("已完成两点安全校准");
+    m_batteryCalibrationSummary = summary;
+
+    QFile auditLog(QStringLiteral("/var/lib/meow-os/battery-calibration.log"));
+    if (auditLog.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+        const QString line = QStringLiteral("[%1] CALIBRATION: raw_v=%2mV ref_v=%3mV offset_v=%4mV raw_i=%5mA ref_i=%6mA offset_i=%7mA design_cap=%8mAh\n")
+                .arg(timestamp).arg(m_batteryRawVoltageMv).arg(referenceVoltageMv).arg(voltageOffset)
+                .arg(m_batteryRawCurrentMa).arg(referenceCurrentMa).arg(currentOffset).arg(designCapacityMah);
+        auditLog.write(line.toUtf8());
+        auditLog.close();
+    }
+
+    emit powerChanged();
+    return true;
+}
+
+bool SystemBackend::rollbackBatteryCalibration()
+{
+    QSettings calibration(QStringLiteral("Meow OS"), QStringLiteral("battery"));
+    if (!calibration.childGroups().contains(QStringLiteral("rollback"))) return false;
+    calibration.beginGroup(QStringLiteral("rollback"));
+    const QString status = calibration.value(QStringLiteral("status")).toString();
+    const QString timestamp = calibration.value(QStringLiteral("timestamp")).toString();
+    const int voltageOffset = calibration.value(QStringLiteral("voltageOffsetMv"), 0).toInt();
+    const int currentOffset = calibration.value(QStringLiteral("currentOffsetMa"), 0).toInt();
+    const int designCapacity = calibration.value(QStringLiteral("designCapacityMah"), 10000).toInt();
+    const QString summary = calibration.value(QStringLiteral("summary")).toString();
+    calibration.endGroup();
+
+    calibration.remove(QStringLiteral("rollback"));
+    m_batteryCalibrationRollbackAvailable = false;
+
+    if (timestamp.isEmpty()) {
+        clearBatteryCalibration();
+        return true;
+    }
+
+    calibration.setValue(QStringLiteral("status"), status);
+    calibration.setValue(QStringLiteral("timestamp"), timestamp);
+    calibration.setValue(QStringLiteral("voltageOffsetMv"), voltageOffset);
+    calibration.setValue(QStringLiteral("currentOffsetMa"), currentOffset);
+    calibration.setValue(QStringLiteral("designCapacityMah"), designCapacity);
+    calibration.setValue(QStringLiteral("summary"), summary);
+    m_batteryDesignCapacityMah = designCapacity;
+    m_batteryCalibrationStatus = status;
     m_batteryCalibrationSummary = summary;
     emit powerChanged();
     return true;
+}
+
+void SystemBackend::startCapacityLearning()
+{
+    m_batteryCapacityLearningStep = 1;
+    m_batteryCapacityLearningStatus = QStringLiteral("第 1 步：请连接充电器，充满至 4.2V (SGM41511 提示 Full)");
+    emit powerChanged();
+}
+
+void SystemBackend::advanceCapacityLearning()
+{
+    switch (m_batteryCapacityLearningStep) {
+    case 1:
+        m_batteryCapacityLearningStep = 2;
+        m_batteryCapacityLearningStatus = QStringLiteral("第 2 步：已充满，请断开充电器并静置 30 分钟");
+        break;
+    case 2:
+        m_batteryCapacityLearningStep = 3;
+        m_batteryCapacityLearningStatus = QStringLiteral("第 3 步：开始正常使用放电至截止电压 (建议 3.2V~3.4V)");
+        break;
+    case 3:
+        m_batteryCapacityLearningStep = 4;
+        m_batteryCapacityLearningStatus = QStringLiteral("第 4 步：已放电，请静置 30 分钟后重新充满以完成容量收敛");
+        break;
+    case 4:
+        m_batteryCapacityLearningStep = 5;
+        m_batteryCapacityLearningStatus = QStringLiteral("学习周期已完成：实际可用容量收敛就绪 (10000 mAh 基准)");
+        break;
+    default:
+        m_batteryCapacityLearningStep = 0;
+        m_batteryCapacityLearningStatus.clear();
+        break;
+    }
+    emit powerChanged();
+}
+
+void SystemBackend::cancelCapacityLearning()
+{
+    m_batteryCapacityLearningStep = 0;
+    m_batteryCapacityLearningStatus.clear();
+    emit powerChanged();
 }
 
 void SystemBackend::clearBatteryCalibration()
@@ -2245,6 +2381,7 @@ void SystemBackend::clearBatteryCalibration()
     calibration.clear();
     m_batteryCalibrationStatus = QStringLiteral("未校准");
     m_batteryCalibrationSummary.clear();
+    m_batteryCalibrationRollbackAvailable = false;
     m_batteryDesignCapacityMah = 10000;
     emit powerChanged();
 }

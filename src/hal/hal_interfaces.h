@@ -52,6 +52,11 @@ public:
     virtual ~IPowerHal() = default;
     virtual int batteryPercent() const = 0;
     virtual bool externalPowerPresent() const = 0;
+    virtual int voltageMv() const { return -1; }
+    virtual int currentMa() const { return 0; }
+    virtual double temperatureC() const { return -273.15; }
+    virtual int designCapacityMah() const { return 10000; }
+    virtual bool isCalibrated() const { return false; }
 };
 
 // Optional capability adapters keep network/audio/storage policy independent
