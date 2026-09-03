@@ -285,7 +285,16 @@ ApplicationWindow {
         interval: 1000
         running: true
         repeat: true
-        onTriggered: window.checkIdleState()
+        property int telemetryTick: 0
+        onTriggered: {
+            window.checkIdleState()
+            if (!systemBackend.screenSleeping) {
+                telemetryTick++
+                if (telemetryTick % 3 === 0) {
+                    systemBackend.refreshStatus()
+                }
+            }
+        }
     }
 
     Connections {

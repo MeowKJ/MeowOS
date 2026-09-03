@@ -725,6 +725,34 @@ QVariantMap collectStatus(const QString &scope)
     result.insert(QStringLiteral("brightnessMax"), brightnessMax);
     result.insert(QStringLiteral("displayBrightnessPercent"), brightnessPercent);
     result.insert(QStringLiteral("brightnessAvailable"), !backlightPath.isEmpty());
+
+    qint64 memTotal = 0;
+    qint64 memAvailable = 0;
+    QFile memInfo(QStringLiteral("/proc/meminfo"));
+    if (memInfo.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        while (true) {
+            const QByteArray line = memInfo.readLine();
+            if (line.isEmpty()) break;
+            long long value = 0;
+            if (line.startsWith("MemTotal:")
+                    && std::sscanf(line.constData(), "MemTotal: %lld", &value) == 1) {
+                memTotal = value;
+            } else if (line.startsWith("MemAvailable:")
+                       && std::sscanf(line.constData(), "MemAvailable: %lld", &value) == 1) {
+                memAvailable = value;
+            }
+            if (memTotal > 0 && memAvailable > 0) break;
+        }
+    }
+    memTotal *= 1024;
+    memAvailable *= 1024;
+    const qint64 memUsed = qMax<qint64>(0, memTotal - memAvailable);
+    const int memPercent = memTotal > 0 ? qBound(0, static_cast<int>(100.0 * memUsed / memTotal), 100) : -1;
+    result.insert(QStringLiteral("memoryPercent"), memPercent);
+    result.insert(QStringLiteral("memoryUsedBytes"), memUsed);
+    result.insert(QStringLiteral("memoryAvailableBytes"), memAvailable);
+    result.insert(QStringLiteral("memoryTotalBytes"), memTotal);
+
     if (scope == QStringLiteral("ethernet")) {
         result.insert(QStringLiteral("ethernetPorts"), collectEthernetPorts());
     }
@@ -1036,6 +1064,30 @@ SystemBackend::SystemBackend(QObject *parent)
     m_volumeSetTimer.setInterval(80);
     m_brightnessSetTimer.setSingleShot(true);
     m_brightnessSetTimer.setInterval(60);
+
+    // Preload system memory metrics synchronously so status bar never flashes empty
+    {
+        qint64 total = 0, avail = 0;
+        QFile mem(QStringLiteral("/proc/meminfo"));
+        if (mem.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            while (true) {
+                const QByteArray line = mem.readLine();
+                if (line.isEmpty()) break;
+                long long v = 0;
+                if (line.startsWith("MemTotal:") && std::sscanf(line.constData(), "MemTotal: %lld", &v) == 1) total = v;
+                else if (line.startsWith("MemAvailable:") && std::sscanf(line.constData(), "MemAvailable: %lld", &v) == 1) avail = v;
+                if (total > 0 && avail > 0) break;
+            }
+            if (total > 0) {
+                total *= 1024; avail *= 1024;
+                m_memoryTotalBytes = total;
+                m_memoryAvailableBytes = avail;
+                m_memoryUsedBytes = qMax<qint64>(0, total - avail);
+                m_memoryPercent = qBound(0, static_cast<int>(100.0 * m_memoryUsedBytes / total), 100);
+            }
+        }
+    }
+
     m_cpuBoostReleaseTimer.setSingleShot(true);
     m_cpuBoostReleaseTimer.setInterval(320);
     connect(&m_cpuBoostReleaseTimer, &QTimer::timeout,
@@ -1414,6 +1466,14 @@ void SystemBackend::refreshPerformance()
         const QVariantMap snapshot = collectPerformanceSnapshot();
         QMetaObject::invokeMethod(this, [this, snapshot, scope]() {
             m_performanceTaskRunning = false;
+            const int mem = snapshot.value(QStringLiteral("memoryPercent"), -1).toInt();
+            if (mem >= 0 && (mem != m_memoryPercent || m_memoryPercent < 0)) {
+                m_memoryPercent = mem;
+                m_memoryUsedBytes = snapshot.value(QStringLiteral("memoryUsedBytes"), 0).toLongLong();
+                m_memoryAvailableBytes = snapshot.value(QStringLiteral("memoryAvailableBytes"), 0).toLongLong();
+                m_memoryTotalBytes = snapshot.value(QStringLiteral("memoryTotalBytes"), 0).toLongLong();
+                emit performanceChanged();
+            }
             if (m_activeScope == QStringLiteral("performance"))
                 applyPerformanceSnapshot(snapshot, scope);
             else
@@ -1816,6 +1876,15 @@ void SystemBackend::applyStatusSnapshot(const QVariantMap &snapshot)
         m_chargerInputLimitMa = chargerInputLimitMa;
         m_chargerFastCurrentMa = chargerFastCurrentMa;
         emit powerChanged();
+    }
+
+    const int memPercent = snapshot.value(QStringLiteral("memoryPercent"), -1).toInt();
+    if (memPercent >= 0 && (memPercent != m_memoryPercent || m_memoryPercent < 0)) {
+        m_memoryPercent = memPercent;
+        m_memoryUsedBytes = snapshot.value(QStringLiteral("memoryUsedBytes"), 0).toLongLong();
+        m_memoryAvailableBytes = snapshot.value(QStringLiteral("memoryAvailableBytes"), 0).toLongLong();
+        m_memoryTotalBytes = snapshot.value(QStringLiteral("memoryTotalBytes"), 0).toLongLong();
+        emit performanceChanged();
     }
 
     const int volumePercent = snapshot.value(QStringLiteral("volumePercent"), -1).toInt();
